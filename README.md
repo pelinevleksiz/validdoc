@@ -1,7 +1,6 @@
 # Software Requirements Specification (SRS)
 
 **Project Name:** validdoc  
-**Timeline:** 20 business days (MVP scope)
 
 ---
 
