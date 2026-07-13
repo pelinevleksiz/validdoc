@@ -2,7 +2,7 @@
 
 ## 1. System Architecture
 
-The system follows a classic **Layered (Tiered) Monolithic Architecture** implemented via Spring Boot 3.x. Communication between layers is strictly unidirectional and decoupled using Data Transfer Objects (DTOs) to isolate database entities from the presentation layer.
+The system follows a classic **Layered Monolithic Architecture** implemented via Spring Boot 3.x. Communication between layers is strictly unidirectional and decoupled using Data Transfer Objects (DTOs) to isolate database entities from the presentation layer.
 
 *   **Presentation Layer (`@RestController`):** Exposes stateless REST endpoints. Responsible for HTTP request validation, parsing `MultipartFile` payloads, and returning unified JSON structures.
 *   **Business Logic Layer (`@Service`):** Contains the core orchestration logic. It encapsulates the asynchronous lifecycle execution, regular expression compilation for data scanning, and the Tesseract execution framework.
