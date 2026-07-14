@@ -33,7 +33,7 @@
 
 ### 2.1 Backend Architecture
 * The core system must be built using java with an enterprise-ready framework.
-* *I will use spring boot 3.x to build a robust monolithic architecture. This keeps development fast and simple within our 20 day limit while remaining modular for future updates.*
+* *I will use spring boot 4.x to build a robust monolithic architecture. This keeps development fast and simple within our 20 day limit while remaining modular for future updates.*
 
 ### 2.2 OCR Engine Integration
 * An optical character recognition tool must be integrated to read text and coordinate data.
