@@ -50,7 +50,7 @@ graph TD
     RejectedInvalid -.->|"Notify uploaded_by"| Notify
 ```
 
-The transactional execution inside `ValidationService` is marked with `@Transactional` to ensure that database metadata updates and immutable audit log writes succeed or fail as a single atomic unit. `NotificationService` invocation happens outside this transaction (fire-and-forget) so a downstream notification failure never rolls back a validation result.
+`DocumentService.processDocument()` — not `ValidationService`, which is a stateless, DB-free matching engine — is marked `@Transactional` (alongside `@Async`) to ensure that a document's metadata update and its `audit_logs` write succeed or fail as a single atomic unit. `NotificationService.notifyRejection()` is itself `@Async`, so its call is dispatched to a separate thread and its execution is decoupled from `processDocument`'s transaction — a downstream notification failure never rolls back a validation result.
  
 ---
 
@@ -222,7 +222,7 @@ Draft-level definition — holds the named field boxes that `TEMPLATED` mode mat
 |---|---|---|
 | id | BigInt | Primary Key, Auto-Increment |
 | document_id | BigInt | Foreign Key -> document_metadata(id), Nullable (populated for document-related actions such as DOCUMENT_UPLOADED, MANUAL_APPROVE, RETENTION_PURGE; null for account-level actions, if any) |
-| action | VarChar(100) | E.g., "DOCUMENT_SIZE_REJECTED", "MANUAL_APPROVE", "DOCUMENT_UPLOADED" |
+| action | VarChar(100) | E.g., "DOCUMENT_UPLOADED", "MANUAL_APPROVE", `"AUTO_" + status` written by `DocumentService` on every automated outcome (e.g. "AUTO_VALIDATED", "AUTO_REJECTED_EMPTY", "AUTO_REJECTED_INVALID", "AUTO_PENDING_REVIEW"), "ENGINE_ERROR_PENDING_REVIEW" (any engine failure, see §8), "RETENTION_PURGE" |
 | performed_by | VarChar(50) | String capture of context (Username or "SYSTEM") |
 | timestamp | Timestamp | UTC Metrics, Not Null |
  
@@ -232,18 +232,21 @@ Draft-level definition — holds the named field boxes that `TEMPLATED` mode mat
 
 ### 5.1 In-Memory Document Processing & Leak Prevention
 
-When a binary stream reaches `DocumentController`, it is processed inside a try-with-resources block to ensure the underlying stream closes automatically. PDFs are rasterized first so every downstream step operates on a uniform `BufferedImage`:
+`DocumentController` reads the multipart upload into a `byte[]` synchronously (the underlying request-scoped stream would already be closed by the time an `@Async` method runs on a worker thread, so a raw `InputStream` cannot safely cross that boundary) and hands it off to `DocumentService.processDocument`, which rasterizes PDFs first so every downstream step operates on a uniform `BufferedImage`:
 
 ```java
-try (InputStream is = file.getInputStream()) {
-    BufferedImage image = contentType.equals("application/pdf")
-        ? pdfRasterService.renderFirstPage(is)   // Apache PDFBox, in-memory only
-        : ImageIO.read(is);                      // PNG / JPEG path
+@Async
+@Transactional
+public void processDocument(Long documentId, byte[] fileBytes, String contentType, Long templateId) {
+    BufferedImage image = PDF_CONTENT_TYPE.equals(contentType)
+        ? pdfRasterService.renderFirstPage(new ByteArrayInputStream(fileBytes))   // Apache PDFBox, in-memory only
+        : ImageIO.read(new ByteArrayInputStream(fileBytes));                     // PNG / JPEG path
  
-    // OpenCV methods check pixel density at specific coordinates for signatures
-    // Tesseract extracts raw text for logical & format regex verification
-    String extractedText = ocrService.doOcr(image);
-    // ... validation steps
+    // OcrService checks pixel density at specific coordinates for signatures/stamps (OpenCV)
+    // and extracts raw text for logical & format regex verification (Tesseract)
+    OcrDocumentResult ocrResult = ocrService.process(image, template);
+    ValidationResult result = validationService.validate(ocrResult, template);
+    // ... apply result, persist, notify on rejection
 }
 ```
 
@@ -277,7 +280,7 @@ This is intentionally a high-level summary, not a full specification — exact w
 - **`REJECTED_INVALID`:** content is present, but one or more required fields fail format/logical checks (§1.3 of the SRS).
 - **`PENDING_REVIEW`:** score falls within a small configurable margin around `validation.confidence-threshold`, or an engine error occurred (§8) — routed to a human rather than auto-decided.
 - **`VALIDATED`:** score at or above the threshold, outside the review margin, with all logical checks passed.
-  Field-level checks under `TEMPLATED` mode are evaluated against the selected `Template`'s `field_definitions`; under `TEMPLATE_FREE` mode they are evaluated against OCR-anchor heuristics (e.g. locating a line labeled "İmza"/"Signature"). The detailed matching logic is an implementation detail left to `ValidationService`, not specified further here.
+  Field-level checks under `TEMPLATED` mode are evaluated against the selected `Template`'s `field_definitions`, after `OcrService` first validates that each field's coordinates actually fall within the rasterized image bounds (malformed template geometry raises `TemplateDefinitionException`, routed to `PENDING_REVIEW` per §8, rather than attempting an out-of-bounds crop). Under `TEMPLATE_FREE` mode, fields are located via OCR-anchor heuristics (e.g. a line labeled "İmza"/"Signature", "Tarih"/"Date") using a locale-safe text normalizer so matching works uniformly whether the document is in Turkish or English. The detailed matching logic is an implementation detail left to `ValidationService`/`OcrService`, not specified further here — concrete examples include an 11-digit TC Kimlik No check, a checksum-validated 10-digit VKN, a phone-format regex, rejection of dates parsed as being in the future, and a consonant-run/vowel-ratio heuristic for keyboard-mashed gibberish. Format/logical checking and masking apply to every text field OCR actually finds, not only the required-label subset used for the completeness score.
 
 ---
 
@@ -313,6 +316,6 @@ graph LR
 To avoid generic internal server errors (HTTP 500) and handle runtime anomalies safely, the application implements a centralized `@ControllerAdvice` handler mapping specific exceptions to structured error responses:
 
 - **`MaxUploadSizeExceededException`:** Returns HTTP 413 Payload Too Large with JSON: `{"error": "File size exceeds the maximum limit of 5MB"}`.
-- **`PdfRasterizationException` (corrupted/unreadable PDF):** Caught gracefully. Sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score, logs the exception, and routes it straight to the human operator queue — mirroring the Tesseract/OpenCV failure path below.
-- **`TesseractException` / `OpenCVException` (Engine Failures):** Caught gracefully. Automatically sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score and logs the exception, routing it straight to the human operator queue.
+- **`PdfRasterizationException` (corrupted/unreadable PDF), `TesseractException` / `OpenCVException` (OCR/CV engine failures), `TemplateDefinitionException` (unparseable or out-of-bounds template `field_definitions`), and unreadable image input (`IOException`):** All caught by `DocumentService.processDocument`, which sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score, logs the exception, and writes an `"ENGINE_ERROR_PENDING_REVIEW"` entry to `audit_logs` — routing it straight to the human operator queue.
+- **Any other unexpected exception:** Caught by a final generic safety net in `processDocument` (same `PENDING_REVIEW` / 0.0-score / `"ENGINE_ERROR_PENDING_REVIEW"` handling as above), so a single document's failure can never leave its row stuck in `PROCESSING` or crash the async worker thread.
 - **`EntityNotFoundException`:** Returns HTTP 404 Not Found when an operator attempts to verify a non-existent document ID.
