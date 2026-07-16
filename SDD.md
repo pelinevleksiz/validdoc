@@ -6,10 +6,10 @@ The system follows a classic **Layered Monolithic Architecture** implemented via
 
 - **Presentation Layer (`@RestController`):** Exposes stateless REST endpoints. Responsible for HTTP request validation, parsing `MultipartFile` payloads, and returning unified JSON structures.
 - **Business Logic Layer (`@Service`):** Contains the core orchestration logic. It encapsulates the asynchronous lifecycle execution, PDF rasterization, regular expression compilation for data scanning, OpenCV coordinate/pixel density analysis for signature/stamp detection, the Tesseract execution framework, and rejection notifications.
-- **Data Access Layer (`@Repository`):** Built upon Spring Data JPA. It abstracts SQL operations into safe Java interfaces, leveraging Hibernate as the underlying Object-Relational Mapping (ORM) framework with database-level encryption for sensitive extracted-data fields.
+- **Data Access Layer (`@Repository`):** Built upon Spring Data JPA. It abstracts SQL operations into safe Java interfaces, leveraging Hibernate as the underlying Object-Relational Mapping (ORM) framework. Sensitive extracted-data fields are encrypted at rest, application-side, via a JPA `AttributeConverter` (`MaskedDataEncryptionConverter`, AES-256-GCM) rather than a database-native encryption function — this keeps the encryption key out of any checked-in SQL and out of the database engine entirely, sourced only from the externalized `encryption.secret-key` property at runtime.
 ### 1.1 Container Readiness
 
-The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` builds the Spring Boot fat JAR and runs it as a non-root user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state.
+The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` (project root) builds from `eclipse-temurin:21-jre-jammy` — a glibc-based image, deliberately not Alpine/musl, because the `org.openpnp:opencv` native bindings are prebuilt against glibc and fail to load under musl — installs `tesseract-ocr`/`tesseract-ocr-tur` from the standard Ubuntu apt repository (version 4.1.1, no third-party PPA dependency), copies the pre-built fat JAR, and runs it as a non-root `validdoc` user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state. The image sets `TESSERACT_DATAPATH`/`TESSERACT_LANGUAGE` env vars matching the apt-installed Tesseract's real path — local (non-container) development is unaffected and keeps whatever `tesseract.datapath` default/override was already in use. `spring.datasource.*` and all secrets (`jwt.secret`, `encryption.secret-key`) must be supplied via environment variables at container run time; the checked-in `application.properties` values are local-development defaults only.
 
 > **Known MVP limitation:** PDF rasterization (§5.1) covers only the first page. Multi-page support is out of scope for this version.
  
@@ -125,24 +125,35 @@ classDiagram
 com.validdoc
 │
 ├── config
-│   ├── SecurityConfig.java (Configures BCrypt, CORS, and stateless Filter Chain)
+│   ├── SecurityConfig.java (BCrypt PasswordEncoder, AuthenticationManager, stateless SecurityFilterChain with JwtAuthenticationFilter; @EnableMethodSecurity for @PreAuthorize. CORS is not yet configured — pending a decided frontend origin.)
 │   ├── AsyncConfig.java (Configures ThreadPoolTaskExecutor limits for < 3s response)
 │   ├── TesseractConfig.java (Bean instantiation of Tesseract instances)
-│   └── ValidationProperties.java (Binds validation.confidence-threshold & retention window from application.yml)
+│   ├── ValidationProperties.java (Binds validation.confidence-threshold & retention window from application.yml)
+│   └── AdminBootstrapRunner.java (ApplicationRunner; seeds one default ADMIN account on first startup if the users table is empty — see §7.1)
 │
 ├── controller
-│   ├── AuthController.java (Handles registration, authentication, and JWT issue)
+│   ├── AuthController.java (Handles authentication and JWT issue; no self-service registration — accounts are created via UserController, per SRS 1.1)
+│   ├── UserController.java (Admin-only account creation for both ADMIN and OPERATOR roles — see §7.1)
 │   ├── DocumentController.java (Handles binary streams, upload, and manual operator reviews)
-│   └── TemplateController.java (Admin CRUD for named field-coordinate templates; read access for OPERATOR/ADMIN)
+│   └── TemplateController.java (Admin Create + read-only list of named field-coordinate templates for OPERATOR/ADMIN; no update/delete endpoints exist)
 │
 ├── dto
 │   ├── request
 │   │   ├── LoginRequest.java
-│   │   └── VerificationRequest.java
+│   │   ├── VerificationRequest.java
+│   │   ├── TemplateRequest.java
+│   │   └── CreateUserRequest.java
 │   └── response
 │       ├── AuthResponse.java
 │       ├── DocumentSummaryResponse.java
-│       └── TemplateSummaryResponse.java
+│       ├── TemplateSummaryResponse.java
+│       └── UserSummaryResponse.java
+│
+├── exception
+│   ├── OpenCVException.java
+│   ├── PdfRasterizationException.java
+│   ├── TemplateDefinitionException.java
+│   └── GlobalExceptionHandler.java (@RestControllerAdvice — see §8)
 │
 ├── model
 │   ├── enums
@@ -150,7 +161,7 @@ com.validdoc
 │   │   ├── DocumentStatus.java
 │   │   └── ValidationMode.java
 │   ├── User.java
-│   ├── DocumentMetadata.java (@ColumnTransformer encryption on extractedMaskedData only)
+│   ├── DocumentMetadata.java (@Convert(MaskedDataEncryptionConverter) on extractedMaskedData only)
 │   ├── Template.java
 │   └── AuditLog.java (documentId nullable — set for document-related actions, null for account-level actions)
 │
@@ -162,6 +173,12 @@ com.validdoc
 │
 ├── scheduler
 │   └── RetentionCleanupJob.java (Periodically purges/anonymizes rows past purgeAt)
+│
+├── security
+│   ├── CustomUserDetailsService.java (Adapts User entity to Spring Security's UserDetails, ROLE_-prefixed authorities)
+│   ├── JwtService.java (HMAC token generation/parsing via jjwt; secret and expiration externalized via jwt.secret/jwt.expiration-ms)
+│   ├── JwtAuthenticationFilter.java (OncePerRequestFilter populating SecurityContextHolder from a valid Bearer token)
+│   └── MaskedDataEncryptionConverter.java (JPA AttributeConverter, AES-256-GCM; key externalized via encryption.secret-key)
 │
 └── service
     ├── PdfRasterService.java (Renders first PDF page to BufferedImage via Apache PDFBox)
@@ -192,6 +209,7 @@ The PostgreSQL schema uses specialized native types, automatic key generators (`
 | Column | Type | Constraints |
 |---|---|---|
 | id | BigInt | Primary Key, Auto-Increment |
+| file_name | VarChar(255) | Not Null; original uploaded filename (e.g. `application.pdf`). This is upload metadata, not "personal data extracted from document contents" (SRS §3.1.1's masking rule is scoped to the latter), so it is intentionally stored in plaintext — operators need it to identify/cross-reference an upload. Uploaders should be advised not to name files after the data subject. |
 | status | VarChar(30) | Enum Mapped as String (Default: PROCESSING) |
 | validation_mode | VarChar(20) | Enum Mapped as String (TEMPLATED, TEMPLATE_FREE), Nullable until analysis starts |
 | template_id | BigInt | Foreign Key -> templates(id), Nullable (set only when validation_mode = TEMPLATED) |
@@ -222,7 +240,7 @@ Draft-level definition — holds the named field boxes that `TEMPLATED` mode mat
 |---|---|---|
 | id | BigInt | Primary Key, Auto-Increment |
 | document_id | BigInt | Foreign Key -> document_metadata(id), Nullable (populated for document-related actions such as DOCUMENT_UPLOADED, MANUAL_APPROVE, RETENTION_PURGE; null for account-level actions, if any) |
-| action | VarChar(100) | E.g., "DOCUMENT_UPLOADED", "MANUAL_APPROVE", `"AUTO_" + status` written by `DocumentService` on every automated outcome (e.g. "AUTO_VALIDATED", "AUTO_REJECTED_EMPTY", "AUTO_REJECTED_INVALID", "AUTO_PENDING_REVIEW"), "ENGINE_ERROR_PENDING_REVIEW" (any engine failure, see §8), "RETENTION_PURGE" |
+| action | VarChar(100) | E.g., "DOCUMENT_UPLOADED", `"AUTO_" + status` written by `DocumentService` on every automated outcome (e.g. "AUTO_VALIDATED", "AUTO_REJECTED_EMPTY", "AUTO_REJECTED_INVALID", "AUTO_PENDING_REVIEW"), `"MANUAL_" + status` written by `DocumentController.verify()` on every operator override (e.g. "MANUAL_VALIDATED", "MANUAL_REJECTED_EMPTY", "MANUAL_REJECTED_INVALID"), "ENGINE_ERROR_PENDING_REVIEW" (any engine failure, see §8), "RETENTION_PURGE" |
 | performed_by | VarChar(50) | String capture of context (Username or "SYSTEM") |
 | timestamp | Timestamp | UTC Metrics, Not Null |
  
@@ -289,8 +307,9 @@ This is intentionally a high-level summary, not a full specification — exact w
 | Method | Endpoint | Auth Role | Description | Request Body / Param | Response (Success) |
 |---|---|---|---|---|---|
 | POST | `/api/auth/login` | Public | Generates JWT Bearer Token | JSON `{username, password}` | `200 OK {token, role}` |
+| POST | `/api/users` | ADMIN | Creates a new user account (ADMIN or OPERATOR); password is BCrypt-hashed before persistence | JSON `{username, password, email, role}` | `201 Created {id, username, email, role}` |
 | POST | `/api/documents/upload` | OPERATOR, ADMIN | Accepts file (PDF/PNG/JPEG), triggers async rasterization (if PDF), OCR & CV validation. Presence of `templateId` selects TEMPLATED mode; its absence selects TEMPLATE_FREE. | form-data `{file: MultipartFile, templateId?: Long}` | `202 Accepted {documentId, status: "PROCESSING"}` |
-| GET | `/api/documents/queue` | OPERATOR, ADMIN | Fetches PENDING_REVIEW docs | None | `200 OK [DocumentMetadata]` |
+| GET | `/api/documents/queue` | OPERATOR, ADMIN | Fetches PENDING_REVIEW docs | None | `200 OK [DocumentSummaryResponse]` (a safe projection of `DocumentMetadata`, not the raw entity) |
 | POST | `/api/documents/{id}/verify` | OPERATOR | Manual status override | JSON `{status: VALIDATED/REJECTED_EMPTY/REJECTED_INVALID}` | `200 OK {message: "Updated"}` |
 | GET | `/api/templates` | OPERATOR, ADMIN | Lists registered templates, for selection at upload time | None | `200 OK [{templateId, name}]` |
 | POST | `/api/templates` | ADMIN | Registers a named template for TEMPLATED validation | JSON `{name, fieldDefinitions}` | `201 Created {templateId}` |
@@ -308,7 +327,14 @@ graph LR
     Filter -->|"Valid Token: Extract Claims"| Context["SecurityContextHolder"]
     Context -->|"Enforce Method Security, e.g. @PreAuthorize"| Endpoint["Target Controller Endpoint"]
 ```
- 
+
+### 7.1 Account Provisioning
+
+There is no public registration endpoint — this is an internal corporate tool, not a consumer-facing product, so opening account creation to anyone would let an unauthenticated caller grant themselves `OPERATOR` access to the document review queue. Instead:
+
+- **`UserController` (`POST /api/users`, `@PreAuthorize("hasRole('ADMIN')")`):** the only way to create a user account, for either role. Hashes the incoming password with the same `PasswordEncoder` bean `SecurityConfig` already exposes, and relies on the existing global `DataIntegrityViolationException` → 409 handler (§8) if the requested `username` already exists — no bespoke duplicate-check code needed.
+- **`AdminBootstrapRunner` (`ApplicationRunner`):** solves the bootstrap problem — an admin-only endpoint is unreachable if zero admins exist yet. On every application startup it checks `userRepository.count() > 0`; if the table is empty, it creates exactly one `ADMIN` account from `app.bootstrap-admin.username` / `app.bootstrap-admin.password` / `app.bootstrap-admin.email` (each overridable via environment variable, same `${ENV_VAR:default}` pattern as `jwt.secret`). It is a no-op on every subsequent restart once at least one user exists. The default password is a placeholder and **must** be overridden via `BOOTSTRAP_ADMIN_PASSWORD` outside local development; operators are expected to change it immediately after first login.
+
 ---
 
 ## 8. Global Exception & Failure Handling Strategy
@@ -316,6 +342,11 @@ graph LR
 To avoid generic internal server errors (HTTP 500) and handle runtime anomalies safely, the application implements a centralized `@ControllerAdvice` handler mapping specific exceptions to structured error responses:
 
 - **`MaxUploadSizeExceededException`:** Returns HTTP 413 Payload Too Large with JSON: `{"error": "File size exceeds the maximum limit of 5MB"}`.
+- **`TaskRejectedException`:** Returns HTTP 429 Too Many Requests — thrown synchronously by the `@Async` proxy when `AsyncConfig`'s `ThreadPoolTaskExecutor` queue (500 tasks) is saturated, fulfilling the behavior already promised in §5.2.
 - **`PdfRasterizationException` (corrupted/unreadable PDF), `TesseractException` / `OpenCVException` (OCR/CV engine failures), `TemplateDefinitionException` (unparseable or out-of-bounds template `field_definitions`), and unreadable image input (`IOException`):** All caught by `DocumentService.processDocument`, which sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score, logs the exception, and writes an `"ENGINE_ERROR_PENDING_REVIEW"` entry to `audit_logs` — routing it straight to the human operator queue.
 - **Any other unexpected exception:** Caught by a final generic safety net in `processDocument` (same `PENDING_REVIEW` / 0.0-score / `"ENGINE_ERROR_PENDING_REVIEW"` handling as above), so a single document's failure can never leave its row stuck in `PROCESSING` or crash the async worker thread.
-- **`EntityNotFoundException`:** Returns HTTP 404 Not Found when an operator attempts to verify a non-existent document ID.
+- **`EntityNotFoundException`:** Returns HTTP 404 Not Found when an operator attempts to verify a non-existent document ID, template ID, or user.
+- **`AuthenticationException`:** Returns HTTP 401 Unauthorized with a generic "wrong username or password" message on a failed `/api/auth/login` attempt.
+- **`AccessDeniedException`:** Returns HTTP 403 Forbidden (as clean JSON rather than Spring Security's default response) when `@PreAuthorize` rejects a request due to insufficient role.
+- **`IllegalArgumentException`:** Returns HTTP 400 Bad Request for invalid business input — e.g. a `/verify` target status outside `VALIDATED`/`REJECTED_EMPTY`/`REJECTED_INVALID`, or a template `fieldDefinitions` payload that fails JSON parsing at registration time.
+- **`DataIntegrityViolationException`:** Returns HTTP 409 Conflict when a database uniqueness constraint is violated, e.g. registering a template with a name that already exists.

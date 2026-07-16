@@ -1,6 +1,7 @@
 package com.validdoc.exception;
 
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(Map.of("error", "File size exceeds the maximum limit of 5MB"));
+    }
+
+    @ExceptionHandler(TaskRejectedException.class)
+    public ResponseEntity<Map<String, String>> handleTaskRejected(TaskRejectedException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", "Sunucu su an yogun, lutfen birazdan tekrar deneyin"));
     }
 
     @ExceptionHandler(EntityNotFoundException.class)

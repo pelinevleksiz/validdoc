@@ -14,7 +14,7 @@ public class Template {
     private String name;
 
     @Column(nullable = false, columnDefinition = "TEXT")
-    private String fieldDefinitions; // JSON formatında koordinat tanımları
+    private String fieldDefinitions;
 
     public Template() {}
 

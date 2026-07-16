@@ -2,8 +2,8 @@ package com.validdoc.model;
 
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.ValidationMode;
+import com.validdoc.security.MaskedDataEncryptionConverter;
 import jakarta.persistence.*;
-import org.hibernate.annotations.ColumnTransformer;
 import java.time.LocalDateTime;
 
 @Entity
@@ -34,14 +34,7 @@ public class DocumentMetadata {
     @Column(columnDefinition = "TEXT")
     private String validationErrorLogs;
 
-    /*
-     * veritabanı seviyesinde pg_crypto kullanarak şifreleme ve deşifreleme işlemini otomatikleştirdik.
-     * secret_key_placeholder alanını gerçek anahtarınla güncelleyebilirsin.
-     */
-    @ColumnTransformer(
-            read = "pgp_sym_decrypt(extracted_masked_data::bytea, 'secret_key_placeholder')",
-            write = "pgp_sym_encrypt(?, 'secret_key_placeholder')"
-    )
+    @Convert(converter = MaskedDataEncryptionConverter.class)
     @Column(columnDefinition = "TEXT")
     private String extractedMaskedData;
 
