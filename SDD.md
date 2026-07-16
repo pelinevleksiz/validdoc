@@ -88,6 +88,7 @@ classDiagram
     }
     class AuditLog {
         +Long id
+        +Long documentId
         +String action
         +String performedBy
         +LocalDateTime timestamp
@@ -115,6 +116,7 @@ classDiagram
     DocumentMetadata --> ValidationMode
     DocumentMetadata --> Template
     DocumentMetadata --> User
+    AuditLog --> DocumentMetadata
 ```
  
 ### 3.1 Directory Tree
@@ -131,7 +133,7 @@ com.validdoc
 ├── controller
 │   ├── AuthController.java (Handles registration, authentication, and JWT issue)
 │   ├── DocumentController.java (Handles binary streams, upload, and manual operator reviews)
-│   └── TemplateController.java (Admin CRUD for named field-coordinate templates)
+│   └── TemplateController.java (Admin CRUD for named field-coordinate templates; read access for OPERATOR/ADMIN)
 │
 ├── dto
 │   ├── request
@@ -139,7 +141,8 @@ com.validdoc
 │   │   └── VerificationRequest.java
 │   └── response
 │       ├── AuthResponse.java
-│       └── DocumentSummaryResponse.java
+│       ├── DocumentSummaryResponse.java
+│       └── TemplateSummaryResponse.java
 │
 ├── model
 │   ├── enums
@@ -149,7 +152,7 @@ com.validdoc
 │   ├── User.java
 │   ├── DocumentMetadata.java (@ColumnTransformer encryption on extractedMaskedData only)
 │   ├── Template.java
-│   └── AuditLog.java
+│   └── AuditLog.java (documentId nullable — set for document-related actions, null for account-level actions)
 │
 ├── repository
 │   ├── UserRepository.java
@@ -203,7 +206,7 @@ The PostgreSQL schema uses specialized native types, automatic key generators (`
  
 ### 4.3 `templates`
  
-Draft-level definition — holds the named field boxes that `TEMPLATED` mode matches a document against. Managed by admins via `TemplateController`.
+Draft-level definition — holds the named field boxes that `TEMPLATED` mode matches a document against. Managed by admins via `TemplateController`; listable by any authenticated user for selection at upload time.
  
 | Column | Type | Constraints |
 |---|---|---|
@@ -213,11 +216,12 @@ Draft-level definition — holds the named field boxes that `TEMPLATED` mode mat
  
 ### 4.4 `audit_logs`
  
-> **Note:** This table is strictly append-only. Delete and Update queries are restricted at the repository configuration layer to preserve corporate auditing trail integrity. It is exempt from the `purge_at` retention mechanism above because it stores only action metadata (who/what/when), never personal document content.
+> **Note:** This table is strictly append-only. Delete and Update queries are restricted at the repository configuration layer to preserve corporate auditing trail integrity. It is exempt from the `purge_at` retention mechanism above because it stores only action metadata (who/what/when/which-document), never personal document content.
  
 | Column | Type | Constraints |
 |---|---|---|
 | id | BigInt | Primary Key, Auto-Increment |
+| document_id | BigInt | Foreign Key -> document_metadata(id), Nullable (populated for document-related actions such as DOCUMENT_UPLOADED, MANUAL_APPROVE, RETENTION_PURGE; null for account-level actions, if any) |
 | action | VarChar(100) | E.g., "DOCUMENT_SIZE_REJECTED", "MANUAL_APPROVE", "DOCUMENT_UPLOADED" |
 | performed_by | VarChar(50) | String capture of context (Username or "SYSTEM") |
 | timestamp | Timestamp | UTC Metrics, Not Null |
@@ -247,7 +251,7 @@ Converting to `BufferedImage` forces the JVM to manage pixel data entirely withi
  
 ### 5.2 Thread Pool Allocation Strategy for Async OCR
  
-To satisfy the under-3-second response time requirement and prevent a sudden influx of uploads from freezing Tomcat's main execution threads, processing runs via an isolated `ThreadPoolTaskExecutor`:
+To satisfy the under-three-second response time requirement and prevent a sudden influx of uploads from freezing Tomcat's main execution threads, processing runs via an isolated `ThreadPoolTaskExecutor`:
  
 - **Core Pool Size:** 4 threads (Optimized for multi-core CPUs scaling text parsing tasks).
 - **Max Pool Size:** 8 threads (Upper safety bound during peak corporate processing hours).
@@ -262,7 +266,7 @@ validation:
   retention-days: 90           # SRS 2.3 / 3.1.1 — window before extracted_masked_data is purged
 ```
  
-`RetentionCleanupJob` runs on a daily schedule (`@Scheduled(cron = "...")`), selecting all `document_metadata` rows where `purge_at IS NOT NULL AND purge_at <= now()`, nulling `extracted_masked_data`, and writing a single `"RETENTION_PURGE"` entry per row to `audit_logs` — preserving the audit trail while satisfying the erasure requirement.
+`RetentionCleanupJob` runs on a daily schedule (`@Scheduled(cron = "...")`), selecting all `document_metadata` rows where `purge_at IS NOT NULL AND purge_at <= now()`, nulling `extracted_masked_data`, and writing a single `"RETENTION_PURGE"` entry (with the corresponding `document_id`) per row to `audit_logs` — preserving the audit trail while satisfying the erasure requirement.
  
 ### 5.4 Validation Logic Overview (Draft Level)
  
@@ -285,6 +289,7 @@ Field-level checks under `TEMPLATED` mode are evaluated against the selected `Te
 | POST | `/api/documents/upload` | OPERATOR, ADMIN | Accepts file (PDF/PNG/JPEG), triggers async rasterization (if PDF), OCR & CV validation. Presence of `templateId` selects TEMPLATED mode; its absence selects TEMPLATE_FREE. | form-data `{file: MultipartFile, templateId?: Long}` | `202 Accepted {documentId, status: "PROCESSING"}` |
 | GET | `/api/documents/queue` | OPERATOR, ADMIN | Fetches PENDING_REVIEW docs | None | `200 OK [DocumentMetadata]` |
 | POST | `/api/documents/{id}/verify` | OPERATOR | Manual status override | JSON `{status: VALIDATED/REJECTED_EMPTY/REJECTED_INVALID}` | `200 OK {message: "Updated"}` |
+| GET | `/api/templates` | OPERATOR, ADMIN | Lists registered templates, for selection at upload time | None | `200 OK [{templateId, name}]` |
 | POST | `/api/templates` | ADMIN | Registers a named template for TEMPLATED validation | JSON `{name, fieldDefinitions}` | `201 Created {templateId}` |
  
 ---
