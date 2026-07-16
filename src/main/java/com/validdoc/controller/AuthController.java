@@ -7,12 +7,9 @@ import com.validdoc.repository.UserRepository;
 import com.validdoc.security.JwtService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,10 +42,5 @@ public class AuthController {
 
         String token = jwtService.generateToken(user.getUsername(), user.getRole());
         return ResponseEntity.ok(new AuthResponse(token, user.getRole().name()));
-    }
-
-    @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<String> handleAuthenticationException(AuthenticationException e) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Kullanici adi veya sifre hatali");
     }
 }

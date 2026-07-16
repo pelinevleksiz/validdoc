@@ -6,7 +6,6 @@ import com.validdoc.dto.response.TemplateSummaryResponse;
 import com.validdoc.model.Template;
 import com.validdoc.repository.TemplateRepository;
 import jakarta.validation.Valid;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -54,15 +53,5 @@ public class TemplateController {
         template = templateRepository.save(template);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("templateId", template.getId()));
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
-    }
-
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<Map<String, String>> handleDuplicateName(DataIntegrityViolationException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "Bu isimde bir template zaten mevcut"));
     }
 }
