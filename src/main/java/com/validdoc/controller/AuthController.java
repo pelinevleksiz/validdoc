@@ -2,10 +2,11 @@ package com.validdoc.controller;
 
 import com.validdoc.dto.request.LoginRequest;
 import com.validdoc.dto.response.AuthResponse;
+import com.validdoc.exception.ApiException;
+import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.User;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.security.JwtService;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -38,7 +39,7 @@ public class AuthController {
         );
 
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new EntityNotFoundException("Kullanici bulunamadi: " + request.getUsername()));
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, request.getUsername()));
 
         String token = jwtService.generateToken(user.getUsername(), user.getRole());
         return ResponseEntity.ok(new AuthResponse(token, user.getRole().name()));

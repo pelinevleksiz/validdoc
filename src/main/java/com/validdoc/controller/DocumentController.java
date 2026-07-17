@@ -2,6 +2,8 @@ package com.validdoc.controller;
 
 import com.validdoc.dto.request.VerificationRequest;
 import com.validdoc.dto.response.DocumentSummaryResponse;
+import com.validdoc.exception.ApiException;
+import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.Template;
@@ -13,20 +15,20 @@ import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.service.DocumentService;
 import com.validdoc.service.ValidationSettingsService;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -39,19 +41,22 @@ public class DocumentController {
     private final AuditLogRepository auditLogRepository;
     private final DocumentService documentService;
     private final ValidationSettingsService validationSettingsService;
+    private final MessageSource messageSource;
 
     public DocumentController(DocumentRepository documentRepository,
                               TemplateRepository templateRepository,
                               UserRepository userRepository,
                               AuditLogRepository auditLogRepository,
                               DocumentService documentService,
-                              ValidationSettingsService validationSettingsService) {
+                              ValidationSettingsService validationSettingsService,
+                              MessageSource messageSource) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
         this.documentService = documentService;
         this.validationSettingsService = validationSettingsService;
+        this.messageSource = messageSource;
     }
 
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
@@ -60,7 +65,7 @@ public class DocumentController {
                                                       @RequestParam(value = "templateId", required = false) Long templateId,
                                                       Authentication authentication) throws IOException {
         User uploader = userRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new EntityNotFoundException("Kullanici bulunamadi: " + authentication.getName()));
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
 
         DocumentMetadata document = new DocumentMetadata();
         document.setFileName(file.getOriginalFilename());
@@ -69,7 +74,7 @@ public class DocumentController {
 
         if (templateId != null) {
             Template template = templateRepository.findById(templateId)
-                    .orElseThrow(() -> new EntityNotFoundException("Template bulunamadi, id=" + templateId));
+                    .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(templateId)));
             document.setTemplate(template);
         }
 
@@ -98,19 +103,20 @@ public class DocumentController {
     @PreAuthorize("hasRole('OPERATOR')")
     public ResponseEntity<Map<String, String>> verify(@PathVariable Long id,
                                                       @Valid @RequestBody VerificationRequest request,
-                                                      Authentication authentication) {
+                                                      Authentication authentication,
+                                                      Locale locale) {
         DocumentStatus target = request.getStatus();
         if (target != DocumentStatus.VALIDATED
                 && target != DocumentStatus.REJECTED_EMPTY
                 && target != DocumentStatus.REJECTED_INVALID) {
-            throw new IllegalArgumentException("Gecersiz manuel durum: " + target);
+            throw new ApiException(ErrorCode.INVALID_DOCUMENT_STATUS, target);
         }
 
         DocumentMetadata document = documentRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("DocumentMetadata bulunamadi, id=" + id));
+                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
 
         User operator = userRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new EntityNotFoundException("Kullanici bulunamadi: " + authentication.getName()));
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
 
         document.setStatus(target);
         document.setOperator(operator);
@@ -120,7 +126,8 @@ public class DocumentController {
 
         auditLogRepository.save(new AuditLog(document.getId(), "MANUAL_" + target.name(), operator.getUsername()));
 
-        return ResponseEntity.ok(Map.of("message", "Updated"));
+        String message = messageSource.getMessage("message.document.status_updated", null, locale);
+        return ResponseEntity.ok(Map.of("message", message));
     }
 
     private DocumentSummaryResponse toSummary(DocumentMetadata document) {
@@ -136,21 +143,5 @@ public class DocumentController {
                 document.getUploadedAt(),
                 document.getProcessedAt()
         );
-    }
-
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<Map<String, String>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(Map.of("error", "File size exceeds the maximum limit of 5MB"));
-    }
-
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<Map<String, String>> handleEntityNotFound(EntityNotFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
     }
 }

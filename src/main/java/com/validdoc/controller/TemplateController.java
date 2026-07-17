@@ -3,9 +3,13 @@ package com.validdoc.controller;
 import com.validdoc.dto.internal.TemplateFieldDefinition;
 import com.validdoc.dto.request.TemplateRequest;
 import com.validdoc.dto.response.TemplateSummaryResponse;
+import com.validdoc.exception.ApiException;
+import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.Template;
 import com.validdoc.repository.TemplateRepository;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +24,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/templates")
 public class TemplateController {
+
+    private static final Logger log = LoggerFactory.getLogger(TemplateController.class);
 
     private final TemplateRepository templateRepository;
     private final JsonMapper jsonMapper;
@@ -44,7 +50,8 @@ public class TemplateController {
         try {
             jsonMapper.readValue(request.getFieldDefinitions(), new TypeReference<List<TemplateFieldDefinition>>() {});
         } catch (JacksonException e) {
-            throw new IllegalArgumentException("fieldDefinitions gecerli bir JSON alan listesi degil: " + e.getMessage());
+            log.warn("fieldDefinitions parse edilemedi", e);
+            throw new ApiException(ErrorCode.INVALID_FIELD_DEFINITIONS);
         }
 
         Template template = new Template();

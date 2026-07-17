@@ -1,12 +1,15 @@
 package com.validdoc.service;
 
 import com.validdoc.config.ValidationProperties;
+import com.validdoc.exception.ApiException;
+import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.ValidationSettings;
 import com.validdoc.repository.ValidationSettingsRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 @Service
 public class ValidationSettingsService {
@@ -63,7 +66,7 @@ public class ValidationSettingsService {
                                                   String updatedBy) {
         double weightSum = weightCompleteness + weightFormat + weightSignature;
         if (Math.abs(weightSum - 1.0) > 0.0001) {
-            throw new IllegalArgumentException("weight-* toplami 1.0 olmalidir, mevcut toplam: " + weightSum);
+            throw new ApiException(ErrorCode.INVALID_WEIGHTS_SUM, String.format(Locale.ROOT, "%.4f", weightSum));
         }
 
         ValidationSettings updated = new ValidationSettings();
