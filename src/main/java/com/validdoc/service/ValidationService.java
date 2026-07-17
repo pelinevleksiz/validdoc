@@ -3,7 +3,6 @@ package com.validdoc.service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
-import com.validdoc.config.ValidationProperties;
 import com.validdoc.dto.internal.TemplateFieldDefinition;
 import com.validdoc.dto.internal.ValidationResult;
 import com.validdoc.dto.ocr.FieldType;
@@ -52,11 +51,11 @@ public class ValidationService {
     private static final Pattern CONSONANT_RUN_PATTERN =
             Pattern.compile("(?i)[bcçdfgğhjklmnpqrsştvwxyz]{5,}");
 
-    private final ValidationProperties properties;
+    private final ValidationSettingsService settings;
     private final JsonMapper jsonMapper;
 
-    public ValidationService(ValidationProperties properties, JsonMapper jsonMapper) {
-        this.properties = properties;
+    public ValidationService(ValidationSettingsService settings, JsonMapper jsonMapper) {
+        this.settings = settings;
         this.jsonMapper = jsonMapper;
     }
 
@@ -73,7 +72,7 @@ public class ValidationService {
         boolean anyInkDetected = fieldsByLabel.values().stream()
                 .filter(f -> f.getType() == FieldType.INK_ZONE)
                 .anyMatch(f -> f.getPixelDensity() != null
-                        && f.getPixelDensity() >= properties.getInkDensityThreshold());
+                        && f.getPixelDensity() >= settings.getInkDensityThreshold());
 
         String rawText = ocrResult.getRawFullText() == null ? "" : ocrResult.getRawFullText().trim();
 
@@ -130,7 +129,7 @@ public class ValidationService {
         } else {
             long inkedCount = requiredInkZones.stream()
                     .filter(f -> f.getPixelDensity() != null
-                            && f.getPixelDensity() >= properties.getInkDensityThreshold())
+                            && f.getPixelDensity() >= settings.getInkDensityThreshold())
                     .count();
             signatureScore = (double) inkedCount / requiredInkZones.size();
         }
@@ -150,17 +149,24 @@ public class ValidationService {
         double confidenceScore = computeScore(completeness, formatCorrectness, signatureScore);
         String maskedJson = toJson(maskedFields);
 
-        double threshold = properties.getConfidenceThreshold();
-        double margin = properties.getReviewMargin();
+        double threshold = settings.getConfidenceThreshold();
+        double margin = settings.getReviewMargin();
 
-        DocumentStatus status = (confidenceScore >= threshold + margin)
-                ? DocumentStatus.VALIDATED
-                : DocumentStatus.PENDING_REVIEW;
+        DocumentStatus status;
+        String errorLog = null;
+        if (confidenceScore >= threshold + margin) {
+            status = DocumentStatus.VALIDATED;
+        } else if (confidenceScore <= threshold - margin) {
+            status = DocumentStatus.REJECTED_INVALID;
+            errorLog = buildErrorLog(List.of("insufficient_completeness"));
+        } else {
+            status = DocumentStatus.PENDING_REVIEW;
+        }
 
         log.debug("Document classified as {}, score={}, completeness={}, format={}, signature={}",
                 status, confidenceScore, completeness, formatCorrectness, signatureScore);
 
-        return new ValidationResult(status, mode, confidenceScore, null, maskedJson);
+        return new ValidationResult(status, mode, confidenceScore, errorLog, maskedJson);
     }
 
     private List<String> resolveRequiredLabels(ValidationMode mode, Template template) {
@@ -188,9 +194,9 @@ public class ValidationService {
     }
 
     private double computeScore(double completeness, double formatCorrectness, double signatureScore) {
-        return properties.getWeightCompleteness() * completeness
-                + properties.getWeightFormat() * formatCorrectness
-                + properties.getWeightSignature() * signatureScore;
+        return settings.getWeightCompleteness() * completeness
+                + settings.getWeightFormat() * formatCorrectness
+                + settings.getWeightSignature() * signatureScore;
     }
 
     private String buildErrorLog(List<String> failedFields) {

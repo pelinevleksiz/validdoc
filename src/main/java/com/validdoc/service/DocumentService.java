@@ -1,6 +1,5 @@
 package com.validdoc.service;
 
-import com.validdoc.config.ValidationProperties;
 import com.validdoc.dto.internal.ValidationResult;
 import com.validdoc.dto.ocr.OcrDocumentResult;
 import com.validdoc.exception.OpenCVException;
@@ -41,7 +40,7 @@ public class DocumentService {
     private final OcrService ocrService;
     private final ValidationService validationService;
     private final NotificationService notificationService;
-    private final ValidationProperties validationProperties;
+    private final ValidationSettingsService validationSettingsService;
 
     public DocumentService(DocumentRepository documentRepository,
                            TemplateRepository templateRepository,
@@ -50,7 +49,7 @@ public class DocumentService {
                            OcrService ocrService,
                            ValidationService validationService,
                            NotificationService notificationService,
-                           ValidationProperties validationProperties) {
+                           ValidationSettingsService validationSettingsService) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.auditLogRepository = auditLogRepository;
@@ -58,7 +57,7 @@ public class DocumentService {
         this.ocrService = ocrService;
         this.validationService = validationService;
         this.notificationService = notificationService;
-        this.validationProperties = validationProperties;
+        this.validationSettingsService = validationSettingsService;
     }
 
     @Async
@@ -120,7 +119,7 @@ public class DocumentService {
         document.setProcessedAt(LocalDateTime.now());
 
         if (isTerminalStatus(result.getStatus())) {
-            document.setPurgeAt(document.getProcessedAt().plusDays(validationProperties.getRetentionDays()));
+            document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
         }
     }
 

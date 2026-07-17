@@ -15,5 +15,5 @@ public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long
 
     List<DocumentMetadata> findByStatus(DocumentStatus status);
 
-    List<DocumentMetadata> findByPurgeAtLessThanEqual(LocalDateTime dateTime);
+    List<DocumentMetadata> findByPurgeAtLessThanEqualAndExtractedMaskedDataIsNotNull(LocalDateTime dateTime);
 }

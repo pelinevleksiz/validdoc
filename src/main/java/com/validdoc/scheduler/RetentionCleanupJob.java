@@ -30,7 +30,7 @@ public class RetentionCleanupJob {
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
     public void purgeExpiredMaskedData() {
-        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqual(LocalDateTime.now());
+        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqualAndExtractedMaskedDataIsNotNull(LocalDateTime.now());
 
         for (DocumentMetadata document : expired) {
             document.setExtractedMaskedData(null);
