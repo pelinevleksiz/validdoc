@@ -8,6 +8,7 @@ import com.validdoc.exception.TemplateDefinitionException;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.Template;
+import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
@@ -68,6 +69,7 @@ public class DocumentService {
 
         try {
             Template template = resolveTemplate(templateId);
+            DocumentLanguage language = document.getLanguage() != null ? document.getLanguage() : DocumentLanguage.TUR;
 
             BufferedImage image = PDF_CONTENT_TYPE.equals(contentType)
                     ? pdfRasterService.renderFirstPage(new ByteArrayInputStream(fileBytes))
@@ -77,7 +79,7 @@ public class DocumentService {
                 throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
             }
 
-            OcrDocumentResult ocrResult = ocrService.process(image, template);
+            OcrDocumentResult ocrResult = ocrService.process(image, template, language);
             ValidationResult result = validationService.validate(ocrResult, template);
 
             applyValidationResult(document, result);

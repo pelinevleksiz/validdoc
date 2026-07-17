@@ -9,7 +9,7 @@ The system follows a classic **Layered Monolithic Architecture** implemented via
 - **Data Access Layer (`@Repository`):** Built upon Spring Data JPA. It abstracts SQL operations into safe Java interfaces, leveraging Hibernate as the underlying Object-Relational Mapping (ORM) framework. Sensitive extracted-data fields are encrypted at rest, application-side, via a JPA `AttributeConverter` (`MaskedDataEncryptionConverter`, AES-256-GCM) rather than a database-native encryption function — this keeps the encryption key out of any checked-in SQL and out of the database engine entirely, sourced only from the externalized `encryption.secret-key` property at runtime.
 ### 1.1 Container Readiness
 
-The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` (project root) builds from `eclipse-temurin:21-jre-jammy` — a glibc-based image, deliberately not Alpine/musl, because the `org.openpnp:opencv` native bindings are prebuilt against glibc and fail to load under musl — installs `tesseract-ocr`/`tesseract-ocr-tur` from the standard Ubuntu apt repository (version 4.1.1, no third-party PPA dependency), copies the pre-built fat JAR, and runs it as a non-root `validdoc` user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state. The image sets `TESSERACT_DATAPATH`/`TESSERACT_LANGUAGE` env vars matching the apt-installed Tesseract's real path — local (non-container) development is unaffected and keeps whatever `tesseract.datapath` default/override was already in use. `spring.datasource.*` and all secrets (`jwt.secret`, `encryption.secret-key`) must be supplied via environment variables at container run time; the checked-in `application.properties` values are local-development defaults only. A `docker-compose.yml` (project root) runs the app alongside a `postgres:16-alpine` container for local integration testing; it reads required secrets from a `.env` file (see `.env.example`) rather than hardcoding or defaulting them, so a missing `.env` fails loudly instead of silently running with an insecure value.
+The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` (project root) builds from `eclipse-temurin:21-jre-jammy` — a glibc-based image, deliberately not Alpine/musl, because the `org.openpnp:opencv` native bindings are prebuilt against glibc and fail to load under musl — installs `tesseract-ocr`/`tesseract-ocr-tur` from the standard Ubuntu apt repository (jammy ships Tesseract **4.1.1**, no third-party PPA dependency; `tesseract-ocr-eng` is pulled in transitively since the base `tesseract-ocr` package depends on it, so English data is present without an explicit install step), copies the pre-built fat JAR, and runs it as a non-root `validdoc` user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state. `tesseract.datapath` (`application.properties`) is the single source of truth for the tessdata location and is set to `/usr/share/tesseract-ocr/4.00/tessdata` — the actual path Debian/Ubuntu packaging uses for Tesseract 4.x (the `.../5/tessdata` convention only applies on Ubuntu 24.04+, which ships Tesseract 5; using it against a jammy-based image silently points at a non-existent directory). There is deliberately no separate `TESSERACT_DATAPATH` env var in the `Dockerfile` — a single property read via `TesseractConfig` avoids two values that can drift out of sync. `spring.datasource.*` and all secrets (`jwt.secret`, `encryption.secret-key`) must be supplied via environment variables at container run time; the checked-in `application.properties` values are local-development defaults only. A `docker-compose.yml` (project root) runs the app alongside a `postgres:16-alpine` container for local integration testing; it reads required secrets from a `.env` file (see `.env.example`) rather than hardcoding or defaulting them, so a missing `.env` fails loudly instead of silently running with an insecure value.
 
 > **Known MVP limitation:** PDF rasterization (§5.1) covers only the first page. Multi-page support is out of scope for this version.
  
@@ -71,6 +71,7 @@ classDiagram
         +Long id
         +DocumentStatus status
         +ValidationMode validationMode
+        +DocumentLanguage language
         +Long templateId
         +Double confidenceScore
         +String validationErrorLogs
@@ -111,6 +112,11 @@ classDiagram
         TEMPLATED
         TEMPLATE_FREE
     }
+    class DocumentLanguage {
+        <<enumeration>>
+        TUR
+        ENG
+    }
     class ValidationSettings {
         +Long id
         +double confidenceThreshold
@@ -126,6 +132,7 @@ classDiagram
     User --> UserRole
     DocumentMetadata --> DocumentStatus
     DocumentMetadata --> ValidationMode
+    DocumentMetadata --> DocumentLanguage
     DocumentMetadata --> Template
     DocumentMetadata --> User
     AuditLog --> DocumentMetadata
@@ -139,7 +146,8 @@ com.validdoc
 ├── config
 │   ├── SecurityConfig.java (BCrypt PasswordEncoder, AuthenticationManager, stateless SecurityFilterChain with JwtAuthenticationFilter; @EnableMethodSecurity for @PreAuthorize. CORS is not yet configured — pending a decided frontend origin.)
 │   ├── AsyncConfig.java (Configures ThreadPoolTaskExecutor limits for < 3s response)
-│   ├── TesseractConfig.java (Bean instantiation of Tesseract instances)
+│   ├── TesseractConfig.java (Reads tesseract.datapath; exposes a TesseractFactory bean — no longer owns a shared Tesseract instance, see §5.5)
+│   ├── TesseractFactory.java (Stateless factory producing a fresh Tesseract instance per call; consumed by OcrService to build its per-thread cache — see §5.5)
 │   ├── ValidationProperties.java (Binds validation.* defaults from application.properties; used only as a one-time seed source for ValidationSettingsService on first boot — see §5.3. Not read directly by ValidationService/DocumentService anymore.)
 │   └── AdminBootstrapRunner.java (ApplicationRunner; seeds one default ADMIN account on first startup if the users table is empty — see §7.1)
 │
@@ -159,7 +167,7 @@ com.validdoc
 │   │   └── ValidationSettingsUpdateRequest.java (all seven tuning fields required; bounded 0.0–1.0 for scores/weights, positive for retentionDays)
 │   └── response
 │       ├── AuthResponse.java
-│       ├── DocumentSummaryResponse.java
+│       ├── DocumentSummaryResponse.java (includes language, see §5.5)
 │       ├── TemplateSummaryResponse.java
 │       ├── UserSummaryResponse.java
 │       └── ValidationSettingsResponse.java
@@ -168,15 +176,19 @@ com.validdoc
 │   ├── OpenCVException.java
 │   ├── PdfRasterizationException.java
 │   ├── TemplateDefinitionException.java
+│   ├── ErrorCode.java (Enum mapping each business error to an HttpStatus + a MessageSource key — see §5.5, §8)
+│   ├── ApiException.java (RuntimeException carrying an ErrorCode plus MessageFormat args; the standard way to raise a user-facing business error, see §8)
+│   ├── ApiErrorResponse.java (Record — the {code, message} JSON body returned for every handled error, see §8)
 │   └── GlobalExceptionHandler.java (@RestControllerAdvice — see §8)
 │
 ├── model
 │   ├── enums
 │   │   ├── UserRole.java
 │   │   ├── DocumentStatus.java
-│   │   └── ValidationMode.java
+│   │   ├── ValidationMode.java
+│   │   └── DocumentLanguage.java (TUR/ENG, each carrying its Tesseract language code; fromParam(String) resolves an upload's lang query param, defaulting unknown/blank/absent values to TUR — see §5.5)
 │   ├── User.java
-│   ├── DocumentMetadata.java (@Convert(MaskedDataEncryptionConverter) on extractedMaskedData only)
+│   ├── DocumentMetadata.java (@Convert(MaskedDataEncryptionConverter) on extractedMaskedData only; language defaults to TUR at the Java level — rows created before this field existed read back as null, treated as TUR by DocumentService, see §5.5)
 │   ├── Template.java
 │   ├── AuditLog.java (documentId nullable — set for document-related actions, null for account-level actions)
 │   └── ValidationSettings.java (Single-row table, id fixed to 1 — no @GeneratedValue — enforcing the singleton invariant at the schema level; see §4.5)
@@ -199,10 +211,10 @@ com.validdoc
 │
 └── service
     ├── PdfRasterService.java (Renders first PDF page to BufferedImage via Apache PDFBox)
-    ├── OcrService.java (BufferedImage conversion, Tess4j bindings, and OpenCV cropping)
+    ├── OcrService.java (BufferedImage conversion, Tess4j bindings, and OpenCV cropping; holds a ThreadLocal<Tesseract> — one instance per async worker thread, built via TesseractFactory — and calls setLanguage(...) per document before each doOCR, see §5.5)
     ├── ValidationService.java (Templated & template-free matching engine, regex, pixel density checks; reads all tuning values from ValidationSettingsService, not ValidationProperties — see §5.3)
     ├── ValidationSettingsService.java (Loads/seeds the singleton ValidationSettings row on startup, caches it in a volatile field, and applies admin updates — see §5.3)
-    ├── DocumentService.java (State tracking, asynchronous orchestration, and persistence; reads retentionDays from ValidationSettingsService)
+    ├── DocumentService.java (State tracking, asynchronous orchestration, and persistence; reads retentionDays from ValidationSettingsService and the document's resolved language from the DocumentMetadata row itself, see §5.5)
     └── NotificationService.java (Async hook fired on REJECTED_* transitions; stubbed/logged for MVP)
 ```
  
@@ -230,6 +242,7 @@ The PostgreSQL schema uses specialized native types, automatic key generators (`
 | file_name | VarChar(255) | Not Null; original uploaded filename (e.g. `application.pdf`). This is upload metadata, not "personal data extracted from document contents" (SRS §3.1.1's masking rule is scoped to the latter), so it is intentionally stored in plaintext — operators need it to identify/cross-reference an upload. Uploaders should be advised not to name files after the data subject. |
 | status | VarChar(30) | Enum Mapped as String (Default: PROCESSING) |
 | validation_mode | VarChar(20) | Enum Mapped as String (TEMPLATED, TEMPLATE_FREE), Nullable until analysis starts |
+| language | VarChar(10) | Enum Mapped as String (TUR, ENG); selected at upload time via the `lang` query param (§5.5), defaults to TUR. Nullable at the DB level only for rows created before this column existed (added via `ddl-auto=update` against a non-empty table, so no `NOT NULL` was applied); `DocumentService` treats a null read as TUR |
 | template_id | BigInt | Foreign Key -> templates(id), Nullable (set only when validation_mode = TEMPLATED) |
 | confidence_score | Double | Nullable until OCR/CV validation concludes |
 | validation_error_logs | Text | Stores logical/format verification error details, Nullable |
@@ -342,6 +355,18 @@ This is intentionally a high-level summary, not a full specification — exact w
 - **`REJECTED_INVALID` (score path):** in addition to the explicit format/logical failures described above, a score at or below `threshold - margin` — with no format errors, but too little of the expected content actually found (e.g. most required fields missing) — is also confidently classified as `REJECTED_INVALID` rather than `PENDING_REVIEW`, logged with an `"insufficient_completeness"` marker in `validation_error_logs`.
   Field-level checks under `TEMPLATED` mode are evaluated against the selected `Template`'s `field_definitions`, after `OcrService` first validates that each field's coordinates actually fall within the rasterized image bounds (malformed template geometry raises `TemplateDefinitionException`, routed to `PENDING_REVIEW` per §8, rather than attempting an out-of-bounds crop). Under `TEMPLATE_FREE` mode, fields are located via OCR-anchor heuristics (e.g. a line labeled "İmza"/"Signature", "Tarih"/"Date") using a locale-safe text normalizer so matching works uniformly whether the document is in Turkish or English. The detailed matching logic is an implementation detail left to `ValidationService`/`OcrService`, not specified further here — concrete examples include an 11-digit TC Kimlik No check, a checksum-validated 10-digit VKN, a phone-format regex, rejection of dates parsed as being in the future, and a consonant-run/vowel-ratio heuristic for keyboard-mashed gibberish. Format/logical checking and masking apply to every text field OCR actually finds, not only the required-label subset used for the completeness score.
 
+### 5.5 Document & API Language Selection (TR/EN)
+
+Turkish/English language support spans two independent concerns that are deliberately **not** driven by the same signal, because they answer different questions:
+
+- **"What language should this API response be written in?"** — a per-request presentation concern, resolved via the standard `Accept-Language` HTTP header through Spring's built-in `AcceptHeaderLocaleResolver` (`spring.web.locale-resolver=accept-header`, `spring.web.locale=tr` as the fallback when the header is absent — configured, not custom code). Every business error raised as an `ApiException(ErrorCode, args...)` is caught by `GlobalExceptionHandler` and resolved against `messages_tr.properties` / `messages_en.properties` (`ResourceBundleMessageSource`, `spring.messages.basename=messages`, `spring.messages.encoding=UTF-8`, `spring.messages.fallback-to-system-locale=false` so container OS locale never leaks in) at the moment the response is built. The response shape is `{"code": "<ERROR_CODE>", "message": "<localized text>"}` — `code` is a stable, language-independent identifier for programmatic handling (logging, frontend `switch` statements); `message` is what a human reads. Numeric `MessageFormat` placeholders (e.g. `{0}` in `error.user.not_found`) are pre-formatted to a fixed-locale string (`String.format(Locale.ROOT, ...)`) or wrapped in `String.valueOf(...)` before being passed as args — `MessageFormat` otherwise silently applies locale-specific number grouping/decimal separators to raw numeric arguments (an `en` response would render a document id like `999999` as `999,999`), which is never the intent for an opaque identifier.
+
+- **"What language is this specific document written in, for OCR purposes?"** — a per-document, per-upload concern, resolved via an explicit `lang` query param on `POST /api/documents/upload` (`tur` or `eng`; anything else, including absent/blank/whitespace-only, defaults to `tur` — `DocumentLanguage.fromParam(String)`). This is intentionally independent of `Accept-Language`: an operator with a Turkish-language UI may still upload an English-language document, and conflating the two would silently mis-select the OCR language. The resolved `DocumentLanguage` is persisted on the `DocumentMetadata` row (`language` column) at upload time, before the async pipeline starts — not passed as a method parameter down the call chain — because `@Async` execution happens on a worker-pool thread after the original HTTP request (and any request-scoped context, e.g. `LocaleContextHolder`) has already completed; persisting it on the entity is the only reliable way for `DocumentService.processDocument` to recover it later. `OcrService.process(image, template, language)` calls `tesseract.setLanguage(language.getTesseractCode())` immediately before OCR on each document.
+
+**Tesseract instance lifecycle:** a `tess4j` `Tesseract` instance is not safe for concurrent use from multiple threads. Before this feature, `TesseractConfig` exposed a single shared `@Bean Tesseract` — safe only because the language never changed after construction. Making the language a per-document, runtime-mutable property on a shared singleton would let two documents processing concurrently on `AsyncConfig`'s pool (core 4 / max 8 threads, §5.2) race on each other's `setLanguage()` call, silently corrupting OCR output. The fix: `TesseractConfig` now exposes a stateless `TesseractFactory` bean instead of a `Tesseract` singleton; `OcrService` holds a `ThreadLocal<Tesseract> tesseractHolder = ThreadLocal.withInitial(tesseractFactory::create)`. Each async worker thread lazily builds and keeps exactly one `Tesseract` instance for its lifetime (avoiding repeated `setDatapath()` I/O on every document), and only ever mutates its own instance's language — eliminating the race without adding per-call instantiation cost. Since `AsyncConfig`'s pool is small and bounded (max 8 threads), this results in at most 8 long-lived `Tesseract` instances, not a leak.
+
+> **Known limitation, out of scope for this feature:** template-free validation's required-field detection (§5.4) is a fixed anchor-keyword list (`name`, `date`, `id_number`, `signature`) matched against raw OCR text — it is not a general-purpose "is this form correctly filled out" detector, does not attempt handwriting recognition (Tesseract's `tur`/`eng` trained data targets printed text), and scores a legitimately-filled document poorly if that document's field labels don't match the anchor list. Robust, form-agnostic completeness detection is a separate, larger design problem than language selection and is deliberately not addressed here.
+
 ---
 
 ## 6. API Endpoints (Contract Design)
@@ -350,9 +375,9 @@ This is intentionally a high-level summary, not a full specification — exact w
 |---|---|---|---|---|---|
 | POST | `/api/auth/login` | Public | Generates JWT Bearer Token | JSON `{username, password}` | `200 OK {token, role}` |
 | POST | `/api/users` | ADMIN | Creates a new user account (ADMIN or OPERATOR); password is BCrypt-hashed before persistence | JSON `{username, password, email, role}` | `201 Created {id, username, email, role}` |
-| POST | `/api/documents/upload` | OPERATOR, ADMIN | Accepts file (PDF/PNG/JPEG), triggers async rasterization (if PDF), OCR & CV validation. Presence of `templateId` selects TEMPLATED mode; its absence selects TEMPLATE_FREE. | form-data `{file: MultipartFile, templateId?: Long}` | `202 Accepted {documentId, status: "PROCESSING"}` |
-| GET | `/api/documents/queue` | OPERATOR, ADMIN | Fetches PENDING_REVIEW docs | None | `200 OK [DocumentSummaryResponse]` (a safe projection of `DocumentMetadata`, not the raw entity) |
-| POST | `/api/documents/{id}/verify` | OPERATOR | Manual status override | JSON `{status: VALIDATED/REJECTED_EMPTY/REJECTED_INVALID}` | `200 OK {message: "Updated"}` |
+| POST | `/api/documents/upload` | OPERATOR, ADMIN | Accepts file (PDF/PNG/JPEG), triggers async rasterization (if PDF), OCR & CV validation. Presence of `templateId` selects TEMPLATED mode; its absence selects TEMPLATE_FREE. `lang` selects the OCR language for this document (§5.5); unset/unrecognized defaults to `tur`. | form-data `{file: MultipartFile, templateId?: Long, lang?: "tur"|"eng"}` | `202 Accepted {documentId, status: "PROCESSING", language: "TUR"|"ENG"}` |
+| GET | `/api/documents/queue` | OPERATOR, ADMIN | Fetches PENDING_REVIEW docs | None | `200 OK [DocumentSummaryResponse]` (a safe projection of `DocumentMetadata`, not the raw entity; includes `language`) |
+| POST | `/api/documents/{id}/verify` | OPERATOR | Manual status override | JSON `{status: VALIDATED/REJECTED_EMPTY/REJECTED_INVALID}` | `200 OK {message}` — localized per `Accept-Language` (§5.5) |
 | GET | `/api/templates` | OPERATOR, ADMIN | Lists registered templates, for selection at upload time | None | `200 OK [{templateId, name}]` |
 | POST | `/api/templates` | ADMIN | Registers a named template for TEMPLATED validation | JSON `{name, fieldDefinitions}` | `201 Created {templateId}` |
 | GET | `/api/admin/validation-settings` | ADMIN | Reads the current runtime-editable validation tuning parameters (§5.3) | None | `200 OK {ValidationSettingsResponse}` |
@@ -383,14 +408,15 @@ There is no public registration endpoint — this is an internal corporate tool,
 
 ## 8. Global Exception & Failure Handling Strategy
 
-To avoid generic internal server errors (HTTP 500) and handle runtime anomalies safely, the application implements a centralized `@ControllerAdvice` handler mapping specific exceptions to structured error responses:
+To avoid generic internal server errors (HTTP 500) and handle runtime anomalies safely, the application implements a centralized `@RestControllerAdvice` (`GlobalExceptionHandler`) mapping specific exceptions to a single structured, **localized** response shape: `ApiErrorResponse(String code, String message)` — see §5.5 for how `message` is resolved. Business-logic errors are raised as `ApiException(ErrorCode, args...)` from the throw site (controllers/services) rather than as raw JDK/framework exceptions carrying hardcoded text, so the same exception object works for every supported language:
 
-- **`MaxUploadSizeExceededException`:** Returns HTTP 413 Payload Too Large with JSON: `{"error": "File size exceeds the maximum limit of 5MB"}`.
-- **`TaskRejectedException`:** Returns HTTP 429 Too Many Requests — thrown synchronously by the `@Async` proxy when `AsyncConfig`'s `ThreadPoolTaskExecutor` queue (500 tasks) is saturated, fulfilling the behavior already promised in §5.2.
-- **`PdfRasterizationException` (corrupted/unreadable PDF), `TesseractException` / `OpenCVException` (OCR/CV engine failures), `TemplateDefinitionException` (unparseable or out-of-bounds template `field_definitions`), and unreadable image input (`IOException`):** All caught by `DocumentService.processDocument`, which sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score, logs the exception, and writes an `"ENGINE_ERROR_PENDING_REVIEW"` entry to `audit_logs` — routing it straight to the human operator queue.
-- **Any other unexpected exception:** Caught by a final generic safety net in `processDocument` (same `PENDING_REVIEW` / 0.0-score / `"ENGINE_ERROR_PENDING_REVIEW"` handling as above), so a single document's failure can never leave its row stuck in `PROCESSING` or crash the async worker thread.
-- **`EntityNotFoundException`:** Returns HTTP 404 Not Found when an operator attempts to verify a non-existent document ID, template ID, or user.
-- **`AuthenticationException`:** Returns HTTP 401 Unauthorized with a generic "wrong username or password" message on a failed `/api/auth/login` attempt.
-- **`AccessDeniedException`:** Returns HTTP 403 Forbidden (as clean JSON rather than Spring Security's default response) when `@PreAuthorize` rejects a request due to insufficient role.
-- **`IllegalArgumentException`:** Returns HTTP 400 Bad Request for invalid business input — e.g. a `/verify` target status outside `VALIDATED`/`REJECTED_EMPTY`/`REJECTED_INVALID`, a template `fieldDefinitions` payload that fails JSON parsing at registration time, or a `PUT /api/admin/validation-settings` payload whose `weightCompleteness + weightFormat + weightSignature` doesn't sum to 1.0 (§5.3).
-- **`DataIntegrityViolationException`:** Returns HTTP 409 Conflict when a database uniqueness constraint is violated, e.g. registering a template with a name that already exists.
+- **`ApiException`:** The general-purpose path — `GlobalExceptionHandler` reads its `ErrorCode` (which fixes the `HttpStatus`) and resolves the corresponding `messages_*.properties` key against the request's locale. Current `ErrorCode` values: `USER_NOT_FOUND`, `TEMPLATE_NOT_FOUND`, `DOCUMENT_NOT_FOUND` (all → 404), `INVALID_DOCUMENT_STATUS`, `INVALID_FIELD_DEFINITIONS`, `INVALID_WEIGHTS_SUM` (all → 400), `BAD_CREDENTIALS` (401), `ACCESS_DENIED` (403), `DUPLICATE_RECORD` (409), `FILE_TOO_LARGE` (413), `SERVER_BUSY` (429), `INTERNAL_UNEXPECTED` (500).
+- **`MaxUploadSizeExceededException` → `FILE_TOO_LARGE` (413).**
+- **`TaskRejectedException` → `SERVER_BUSY` (429):** thrown synchronously by the `@Async` proxy when `AsyncConfig`'s `ThreadPoolTaskExecutor` queue (500 tasks) is saturated, fulfilling the behavior already promised in §5.2.
+- **`AuthenticationException` → `BAD_CREDENTIALS` (401)** on a failed `/api/auth/login` attempt.
+- **`AccessDeniedException` → `ACCESS_DENIED` (403)** when `@PreAuthorize` rejects a request due to insufficient role.
+- **`DataIntegrityViolationException` → `DUPLICATE_RECORD` (409)** when a database uniqueness constraint is violated, e.g. registering a template with a name that already exists.
+- **Any other unexpected exception → `INTERNAL_UNEXPECTED` (500):** a final generic handler logs the exception server-side and returns a safe, localized, non-leaking message — nothing reaches Spring's default whitelabel error page.
+- **`PdfRasterizationException` (corrupted/unreadable PDF), `TesseractException` / `OpenCVException` (OCR/CV engine failures), `TemplateDefinitionException` (unparseable or out-of-bounds template `field_definitions`), and unreadable image input (`IOException`):** These never reach `GlobalExceptionHandler` at all — they occur inside the `@Async` pipeline, after the HTTP response has already been sent. All are caught by `DocumentService.processDocument`, which sets the target document's status to `PENDING_REVIEW` with a 0.0 confidence score, logs the exception, and writes an `"ENGINE_ERROR_PENDING_REVIEW"` entry to `audit_logs` — routing it straight to the human operator queue instead of surfacing as an API error.
+
+> **Implementation note:** every throw site that used to raise a raw `jakarta.persistence.EntityNotFoundException` or `IllegalArgumentException` with a hardcoded Turkish message (in `AuthController`, `DocumentController`, `TemplateController`, `ValidationSettingsService`) has been migrated to `ApiException`. `DocumentService` and `OcrService` still use `EntityNotFoundException`/`IllegalArgumentException` internally for a small number of cases — this is intentional, not an oversight: those specific throws only ever occur inside the `@Async` pipeline described above, are always caught by `DocumentService`'s own handling before reaching an HTTP response, and therefore never need localization.

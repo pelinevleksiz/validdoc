@@ -1,6 +1,7 @@
 package com.validdoc.model;
 
 import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.ValidationMode;
 import com.validdoc.security.MaskedDataEncryptionConverter;
 import jakarta.persistence.*;
@@ -24,6 +25,10 @@ public class DocumentMetadata {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private ValidationMode validationMode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private DocumentLanguage language = DocumentLanguage.TUR;
 
     @ManyToOne
     @JoinColumn(name = "template_id")
@@ -66,6 +71,9 @@ public class DocumentMetadata {
 
     public ValidationMode getValidationMode() { return validationMode; }
     public void setValidationMode(ValidationMode validationMode) { this.validationMode = validationMode; }
+
+    public DocumentLanguage getLanguage() { return language; }
+    public void setLanguage(DocumentLanguage language) { this.language = language; }
 
     public Template getTemplate() { return template; }
     public void setTemplate(Template template) { this.template = template; }

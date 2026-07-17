@@ -12,9 +12,6 @@ RUN chown -R validdoc:validdoc /app
 
 USER validdoc
 
-ENV TESSERACT_DATAPATH=/usr/share/tesseract-ocr/4.00/tessdata
-ENV TESSERACT_LANGUAGE=tur+eng
-
 EXPOSE 8080
 
 ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-XX:+EnableDynamicAgentLoading", "-jar", "app.jar"]

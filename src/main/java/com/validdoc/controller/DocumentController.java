@@ -8,6 +8,7 @@ import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.Template;
 import com.validdoc.model.User;
+import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
@@ -63,6 +64,7 @@ public class DocumentController {
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<Map<String, Object>> upload(@RequestParam("file") MultipartFile file,
                                                       @RequestParam(value = "templateId", required = false) Long templateId,
+                                                      @RequestParam(value = "lang", required = false) String lang,
                                                       Authentication authentication) throws IOException {
         User uploader = userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
@@ -71,6 +73,7 @@ public class DocumentController {
         document.setFileName(file.getOriginalFilename());
         document.setUploadedBy(uploader);
         document.setStatus(DocumentStatus.PROCESSING);
+        document.setLanguage(DocumentLanguage.fromParam(lang));
 
         if (templateId != null) {
             Template template = templateRepository.findById(templateId)
@@ -86,6 +89,7 @@ public class DocumentController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("documentId", document.getId());
         body.put("status", document.getStatus().name());
+        body.put("language", document.getLanguage().name());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
     }
 
@@ -137,6 +141,7 @@ public class DocumentController {
                 document.getStatus(),
                 document.getValidationMode(),
                 templateId,
+                document.getLanguage(),
                 document.getConfidenceScore(),
                 document.getValidationErrorLogs(),
                 document.getExtractedMaskedData(),

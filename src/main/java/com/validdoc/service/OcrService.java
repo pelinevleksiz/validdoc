@@ -10,6 +10,7 @@ import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 import org.springframework.stereotype.Service;
 
+import com.validdoc.config.TesseractFactory;
 import com.validdoc.dto.internal.TemplateFieldDefinition;
 import com.validdoc.dto.ocr.FieldType;
 import com.validdoc.dto.ocr.OcrDocumentResult;
@@ -17,6 +18,7 @@ import com.validdoc.dto.ocr.OcrFieldResult;
 import com.validdoc.exception.OpenCVException;
 import com.validdoc.exception.TemplateDefinitionException;
 import com.validdoc.model.Template;
+import com.validdoc.model.enums.DocumentLanguage;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -50,28 +52,34 @@ public class OcrService {
     private static final int INK_REGION_HEIGHT = 60;
     private static final int INK_REGION_Y_OFFSET = 5;
 
-    private final Tesseract tesseract;
+    private final TesseractFactory tesseractFactory;
     private final JsonMapper jsonMapper;
+    private final ThreadLocal<Tesseract> tesseractHolder;
 
-    public OcrService(Tesseract tesseract, JsonMapper jsonMapper) {
-        this.tesseract = tesseract;
+    public OcrService(TesseractFactory tesseractFactory, JsonMapper jsonMapper) {
+        this.tesseractFactory = tesseractFactory;
         this.jsonMapper = jsonMapper;
+        this.tesseractHolder = ThreadLocal.withInitial(tesseractFactory::create);
     }
 
-    public OcrDocumentResult process(BufferedImage image, Template template) throws TesseractException {
+    public OcrDocumentResult process(BufferedImage image, Template template, DocumentLanguage language) throws TesseractException {
         if (image == null) {
             throw new IllegalArgumentException("ocr processing failed: input image cannot be null");
         }
+
+        Tesseract tesseract = tesseractHolder.get();
+        tesseract.setLanguage(language.getTesseractCode());
+
         String rawFullText = tesseract.doOCR(image);
 
         List<OcrFieldResult> fields = (template != null)
-                ? processTemplated(image, template)
-                : processTemplateFree(image, rawFullText);
+                ? processTemplated(tesseract, image, template)
+                : processTemplateFree(tesseract, image, rawFullText);
 
         return new OcrDocumentResult(rawFullText, fields);
     }
 
-    private List<OcrFieldResult> processTemplated(BufferedImage image, Template template) throws TesseractException {
+    private List<OcrFieldResult> processTemplated(Tesseract tesseract, BufferedImage image, Template template) throws TesseractException {
         List<TemplateFieldDefinition> defs = parseTemplate(template);
         List<OcrFieldResult> results = new ArrayList<>();
 
@@ -122,7 +130,7 @@ public class OcrService {
         }
     }
 
-    private List<OcrFieldResult> processTemplateFree(BufferedImage image, String rawFullText) throws TesseractException {
+    private List<OcrFieldResult> processTemplateFree(Tesseract tesseract, BufferedImage image, String rawFullText) throws TesseractException {
         List<OcrFieldResult> results = new ArrayList<>();
         List<Word> words = tesseract.getWords(image, ITessAPI.TessPageIteratorLevel.RIL_TEXTLINE);
         String[] lines = rawFullText.split("\\r?\\n");
