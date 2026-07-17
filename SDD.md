@@ -9,7 +9,7 @@ The system follows a classic **Layered Monolithic Architecture** implemented via
 - **Data Access Layer (`@Repository`):** Built upon Spring Data JPA. It abstracts SQL operations into safe Java interfaces, leveraging Hibernate as the underlying Object-Relational Mapping (ORM) framework. Sensitive extracted-data fields are encrypted at rest, application-side, via a JPA `AttributeConverter` (`MaskedDataEncryptionConverter`, AES-256-GCM) rather than a database-native encryption function — this keeps the encryption key out of any checked-in SQL and out of the database engine entirely, sourced only from the externalized `encryption.secret-key` property at runtime.
 ### 1.1 Container Readiness
 
-The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` (project root) builds from `eclipse-temurin:21-jre-jammy` — a glibc-based image, deliberately not Alpine/musl, because the `org.openpnp:opencv` native bindings are prebuilt against glibc and fail to load under musl — installs `tesseract-ocr`/`tesseract-ocr-tur` from the standard Ubuntu apt repository (version 4.1.1, no third-party PPA dependency), copies the pre-built fat JAR, and runs it as a non-root `validdoc` user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state. The image sets `TESSERACT_DATAPATH`/`TESSERACT_LANGUAGE` env vars matching the apt-installed Tesseract's real path — local (non-container) development is unaffected and keeps whatever `tesseract.datapath` default/override was already in use. `spring.datasource.*` and all secrets (`jwt.secret`, `encryption.secret-key`) must be supplied via environment variables at container run time; the checked-in `application.properties` values are local-development defaults only.
+The application holds no local session or file state (per §5.1, all documents are processed strictly in-memory). A single-stage `Dockerfile` (project root) builds from `eclipse-temurin:21-jre-jammy` — a glibc-based image, deliberately not Alpine/musl, because the `org.openpnp:opencv` native bindings are prebuilt against glibc and fail to load under musl — installs `tesseract-ocr`/`tesseract-ocr-tur` from the standard Ubuntu apt repository (version 4.1.1, no third-party PPA dependency), copies the pre-built fat JAR, and runs it as a non-root `validdoc` user; horizontal scaling is achieved by running multiple container replicas behind a load balancer, with PostgreSQL as the sole shared state. The image sets `TESSERACT_DATAPATH`/`TESSERACT_LANGUAGE` env vars matching the apt-installed Tesseract's real path — local (non-container) development is unaffected and keeps whatever `tesseract.datapath` default/override was already in use. `spring.datasource.*` and all secrets (`jwt.secret`, `encryption.secret-key`) must be supplied via environment variables at container run time; the checked-in `application.properties` values are local-development defaults only. A `docker-compose.yml` (project root) runs the app alongside a `postgres:16-alpine` container for local integration testing; it reads required secrets from a `.env` file (see `.env.example`) rather than hardcoding or defaulting them, so a missing `.env` fails loudly instead of silently running with an insecure value.
 
 > **Known MVP limitation:** PDF rasterization (§5.1) covers only the first page. Multi-page support is out of scope for this version.
  
@@ -111,6 +111,18 @@ classDiagram
         TEMPLATED
         TEMPLATE_FREE
     }
+    class ValidationSettings {
+        +Long id
+        +double confidenceThreshold
+        +double reviewMargin
+        +int retentionDays
+        +double inkDensityThreshold
+        +double weightCompleteness
+        +double weightFormat
+        +double weightSignature
+        +LocalDateTime updatedAt
+        +String updatedBy
+    }
     User --> UserRole
     DocumentMetadata --> DocumentStatus
     DocumentMetadata --> ValidationMode
@@ -128,26 +140,29 @@ com.validdoc
 │   ├── SecurityConfig.java (BCrypt PasswordEncoder, AuthenticationManager, stateless SecurityFilterChain with JwtAuthenticationFilter; @EnableMethodSecurity for @PreAuthorize. CORS is not yet configured — pending a decided frontend origin.)
 │   ├── AsyncConfig.java (Configures ThreadPoolTaskExecutor limits for < 3s response)
 │   ├── TesseractConfig.java (Bean instantiation of Tesseract instances)
-│   ├── ValidationProperties.java (Binds validation.confidence-threshold & retention window from application.yml)
+│   ├── ValidationProperties.java (Binds validation.* defaults from application.properties; used only as a one-time seed source for ValidationSettingsService on first boot — see §5.3. Not read directly by ValidationService/DocumentService anymore.)
 │   └── AdminBootstrapRunner.java (ApplicationRunner; seeds one default ADMIN account on first startup if the users table is empty — see §7.1)
 │
 ├── controller
 │   ├── AuthController.java (Handles authentication and JWT issue; no self-service registration — accounts are created via UserController, per SRS 1.1)
 │   ├── UserController.java (Admin-only account creation for both ADMIN and OPERATOR roles — see §7.1)
 │   ├── DocumentController.java (Handles binary streams, upload, and manual operator reviews)
-│   └── TemplateController.java (Admin Create + read-only list of named field-coordinate templates for OPERATOR/ADMIN; no update/delete endpoints exist)
+│   ├── TemplateController.java (Admin Create + read-only list of named field-coordinate templates for OPERATOR/ADMIN; no update/delete endpoints exist)
+│   └── ValidationSettingsController.java (Admin-only GET/PUT of the runtime-editable confidence threshold, review margin, retention window, and scoring weights — see §5.3)
 │
 ├── dto
 │   ├── request
 │   │   ├── LoginRequest.java
 │   │   ├── VerificationRequest.java
 │   │   ├── TemplateRequest.java
-│   │   └── CreateUserRequest.java
+│   │   ├── CreateUserRequest.java
+│   │   └── ValidationSettingsUpdateRequest.java (all seven tuning fields required; bounded 0.0–1.0 for scores/weights, positive for retentionDays)
 │   └── response
 │       ├── AuthResponse.java
 │       ├── DocumentSummaryResponse.java
 │       ├── TemplateSummaryResponse.java
-│       └── UserSummaryResponse.java
+│       ├── UserSummaryResponse.java
+│       └── ValidationSettingsResponse.java
 │
 ├── exception
 │   ├── OpenCVException.java
@@ -163,13 +178,15 @@ com.validdoc
 │   ├── User.java
 │   ├── DocumentMetadata.java (@Convert(MaskedDataEncryptionConverter) on extractedMaskedData only)
 │   ├── Template.java
-│   └── AuditLog.java (documentId nullable — set for document-related actions, null for account-level actions)
+│   ├── AuditLog.java (documentId nullable — set for document-related actions, null for account-level actions)
+│   └── ValidationSettings.java (Single-row table, id fixed to 1 — no @GeneratedValue — enforcing the singleton invariant at the schema level; see §4.5)
 │
 ├── repository
 │   ├── UserRepository.java
-│   ├── DocumentRepository.java
+│   ├── DocumentRepository.java (findByPurgeAtLessThanEqualAndExtractedMaskedDataIsNotNull excludes rows already purged, or that never had maskable data, from repeat retention sweeps — see §5.3)
 │   ├── TemplateRepository.java
-│   └── AuditLogRepository.java (Immutable repository configuration)
+│   ├── AuditLogRepository.java (Immutable repository configuration)
+│   └── ValidationSettingsRepository.java
 │
 ├── scheduler
 │   └── RetentionCleanupJob.java (Periodically purges/anonymizes rows past purgeAt)
@@ -183,8 +200,9 @@ com.validdoc
 └── service
     ├── PdfRasterService.java (Renders first PDF page to BufferedImage via Apache PDFBox)
     ├── OcrService.java (BufferedImage conversion, Tess4j bindings, and OpenCV cropping)
-    ├── ValidationService.java (Templated & template-free matching engine, regex, pixel density checks)
-    ├── DocumentService.java (State tracking, asynchronous orchestration, and persistence)
+    ├── ValidationService.java (Templated & template-free matching engine, regex, pixel density checks; reads all tuning values from ValidationSettingsService, not ValidationProperties — see §5.3)
+    ├── ValidationSettingsService.java (Loads/seeds the singleton ValidationSettings row on startup, caches it in a volatile field, and applies admin updates — see §5.3)
+    ├── DocumentService.java (State tracking, asynchronous orchestration, and persistence; reads retentionDays from ValidationSettingsService)
     └── NotificationService.java (Async hook fired on REJECTED_* transitions; stubbed/logged for MVP)
 ```
  
@@ -243,6 +261,23 @@ Draft-level definition — holds the named field boxes that `TEMPLATED` mode mat
 | action | VarChar(100) | E.g., "DOCUMENT_UPLOADED", `"AUTO_" + status` written by `DocumentService` on every automated outcome (e.g. "AUTO_VALIDATED", "AUTO_REJECTED_EMPTY", "AUTO_REJECTED_INVALID", "AUTO_PENDING_REVIEW"), `"MANUAL_" + status` written by `DocumentController.verify()` on every operator override (e.g. "MANUAL_VALIDATED", "MANUAL_REJECTED_EMPTY", "MANUAL_REJECTED_INVALID"), "ENGINE_ERROR_PENDING_REVIEW" (any engine failure, see §8), "RETENTION_PURGE" |
 | performed_by | VarChar(50) | String capture of context (Username or "SYSTEM") |
 | timestamp | Timestamp | UTC Metrics, Not Null |
+
+### 4.5 `validation_settings`
+
+Single-row table (`id` fixed to `1`, no auto-increment) holding the current, admin-editable validation tuning parameters. Seeded once from `ValidationProperties`/`application.properties` on first application boot if empty; every subsequent read/write goes through `ValidationSettingsService` (see §5.3), never back to the static config. This is what makes threshold/weight/retention tuning a runtime operation instead of a code change + redeploy.
+
+| Column | Type | Constraints |
+|---|---|---|
+| id | BigInt | Primary Key, fixed value `1` (no `@GeneratedValue` — schema itself enforces the single-row invariant) |
+| confidence_threshold | Double | Not Null (SRS 1.4) |
+| review_margin | Double | Not Null (SRS 1.3, §5.4) |
+| retention_days | Integer | Not Null (SRS 2.3 / 3.1.1) |
+| ink_density_threshold | Double | Not Null (SRS 1.3, signature/stamp ink detection) |
+| weight_completeness | Double | Not Null; with weight_format and weight_signature, must sum to 1.0 — enforced on every write |
+| weight_format | Double | Not Null |
+| weight_signature | Double | Not Null |
+| updated_at | Timestamp | Not Null; refreshed on every write |
+| updated_by | VarChar(50) | Not Null; `"SYSTEM_SEED"` for the initial seed row, otherwise the admin username that made the change |
  
 ---
 
@@ -277,27 +312,34 @@ To satisfy the under-three-second response time requirement and prevent a sudden
 - **Core Pool Size:** 4 threads (Optimized for multi-core CPUs scaling text parsing tasks).
 - **Max Pool Size:** 8 threads (Upper safety bound during peak corporate processing hours).
 - **Queue Capacity:** 500 tasks. If the queue saturates, subsequent requests receive an immediate HTTP 429 Too Many Requests status, protecting the application from memory crash failures.
-### 5.3 Configurable Confidence Threshold & Retention Window
+### 5.3 Admin-Configurable Validation Parameters (Runtime, No Restart)
 
-Both values are externalized to `application.yml` and bound via `ValidationProperties`, so they can be tuned per environment without a code change:
+All seven tuning values (`confidenceThreshold`, `reviewMargin`, `retentionDays`, `inkDensityThreshold`, `weightCompleteness`, `weightFormat`, `weightSignature`) live in the `validation_settings` table (§4.5), not directly in `application.properties`. `ValidationProperties` still exists and still binds `validation.*` from `application.properties`, but it now plays a narrower role: a one-time default source, read only by `ValidationSettingsService` the very first time the application starts against an empty `validation_settings` table.
 
-```yaml
-validation:
-  confidence-threshold: 0.80   # SRS 1.4 — documents below this go to PENDING_REVIEW
-  retention-days: 90           # SRS 2.3 / 3.1.1 — window before extracted_masked_data is purged
+```
+@PostConstruct on ValidationSettingsService:
+  row = validationSettingsRepository.findById(1)
+  if row absent:
+      row = seed a new row from ValidationProperties defaults, updatedBy = "SYSTEM_SEED"
+  cache row in a volatile field ("current")
 ```
 
-`RetentionCleanupJob` runs on a daily schedule (`@Scheduled(cron = "...")`), selecting all `document_metadata` rows where `purge_at IS NOT NULL AND purge_at <= now()`, nulling `extracted_masked_data`, and writing a single `"RETENTION_PURGE"` entry (with the corresponding `document_id`) per row to `audit_logs` — preserving the audit trail while satisfying the erasure requirement.
+`ValidationService` and `DocumentService` both depend on `ValidationSettingsService`, never on `ValidationProperties` directly — so a value change is visible to every in-flight and future validation immediately, without a restart. The cached reference is `volatile` (not merely synchronized) because validation runs on `@Async` worker threads and the retention job runs on the scheduler thread; a `volatile` read is sufficient for safe cross-thread visibility of an immutable snapshot object, without contending on a lock during the hot validation path.
+
+Admins change these values via `ValidationSettingsController` (`GET`/`PUT /api/admin/validation-settings`, `hasRole('ADMIN')` — see §6). A `PUT` re-validates that `weightCompleteness + weightFormat + weightSignature` sums to 1.0 (the same invariant `ValidationProperties` used to check once at startup via `@PostConstruct`, now re-checked on every write), rejecting with `IllegalArgumentException` → 400 (§8) otherwise; on success it persists the new row, refreshes the cache, and writes a `"VALIDATION_SETTINGS_UPDATED"` entry to `audit_logs` (via the `AuditLog(action, performedBy)` constructor — `document_id` stays null, since this isn't a per-document action).
+
+`RetentionCleanupJob` runs on a daily schedule (`@Scheduled(cron = "0 0 3 * * *")`), reading the current `retentionDays` indirectly — `purge_at` is precomputed and stored per-document at the moment processing (or manual verification) concludes, not read live off `ValidationSettingsService` at purge time, so a later change to `retentionDays` only affects documents processed after the change. It selects `document_metadata` rows via `findByPurgeAtLessThanEqualAndExtractedMaskedDataIsNotNull(now())` — the `extractedMaskedData IS NOT NULL` condition is deliberate: without it, a row past its `purge_at` would be re-selected and re-logged on every single run for as long as it remains in the table, since nothing else marks it as "already purged." Requiring non-null masked data means a row is only ever picked up once (nulling the column removes it from future sweeps), and a document that never had maskable personal data extracted in the first place is never selected at all, since there is nothing to purge. Matching rows have `extracted_masked_data` nulled and a single `"RETENTION_PURGE"` entry (with the corresponding `document_id`) written to `audit_logs` — preserving the audit trail while satisfying the erasure requirement.
 
 ### 5.4 Validation Logic Overview (Draft Level)
 
-This is intentionally a high-level summary, not a full specification — exact weights and margins are tuning parameters set in `ValidationProperties`, not fixed contracts:
+This is intentionally a high-level summary, not a full specification — exact weights and margins are admin-configurable tuning parameters (§5.3), not fixed contracts:
 
 - **Confidence score:** a weighted combination of (a) required-field completeness, (b) format/logical correctness of extracted text, and (c) signature/stamp ink presence.
 - **`REJECTED_EMPTY`:** little to no extracted text **and** no ink detected in signature/stamp regions — treated as a physically blank document regardless of score.
 - **`REJECTED_INVALID`:** content is present, but one or more required fields fail format/logical checks (§1.3 of the SRS).
-- **`PENDING_REVIEW`:** score falls within a small configurable margin around `validation.confidence-threshold`, or an engine error occurred (§8) — routed to a human rather than auto-decided.
-- **`VALIDATED`:** score at or above the threshold, outside the review margin, with all logical checks passed.
+- **`PENDING_REVIEW`:** score falls within a small margin around the current `confidenceThreshold` (§5.3), **in either direction** (`threshold - margin` to `threshold + margin`), or an engine error occurred (§8) — routed to a human rather than auto-decided. This is intentionally a narrow band; most low-scoring documents are confidently auto-rejected rather than deferred (see `REJECTED_INVALID` below).
+- **`VALIDATED`:** score at or above `threshold + margin`, with all logical checks passed.
+- **`REJECTED_INVALID` (score path):** in addition to the explicit format/logical failures described above, a score at or below `threshold - margin` — with no format errors, but too little of the expected content actually found (e.g. most required fields missing) — is also confidently classified as `REJECTED_INVALID` rather than `PENDING_REVIEW`, logged with an `"insufficient_completeness"` marker in `validation_error_logs`.
   Field-level checks under `TEMPLATED` mode are evaluated against the selected `Template`'s `field_definitions`, after `OcrService` first validates that each field's coordinates actually fall within the rasterized image bounds (malformed template geometry raises `TemplateDefinitionException`, routed to `PENDING_REVIEW` per §8, rather than attempting an out-of-bounds crop). Under `TEMPLATE_FREE` mode, fields are located via OCR-anchor heuristics (e.g. a line labeled "İmza"/"Signature", "Tarih"/"Date") using a locale-safe text normalizer so matching works uniformly whether the document is in Turkish or English. The detailed matching logic is an implementation detail left to `ValidationService`/`OcrService`, not specified further here — concrete examples include an 11-digit TC Kimlik No check, a checksum-validated 10-digit VKN, a phone-format regex, rejection of dates parsed as being in the future, and a consonant-run/vowel-ratio heuristic for keyboard-mashed gibberish. Format/logical checking and masking apply to every text field OCR actually finds, not only the required-label subset used for the completeness score.
 
 ---
@@ -313,6 +355,8 @@ This is intentionally a high-level summary, not a full specification — exact w
 | POST | `/api/documents/{id}/verify` | OPERATOR | Manual status override | JSON `{status: VALIDATED/REJECTED_EMPTY/REJECTED_INVALID}` | `200 OK {message: "Updated"}` |
 | GET | `/api/templates` | OPERATOR, ADMIN | Lists registered templates, for selection at upload time | None | `200 OK [{templateId, name}]` |
 | POST | `/api/templates` | ADMIN | Registers a named template for TEMPLATED validation | JSON `{name, fieldDefinitions}` | `201 Created {templateId}` |
+| GET | `/api/admin/validation-settings` | ADMIN | Reads the current runtime-editable validation tuning parameters (§5.3) | None | `200 OK {ValidationSettingsResponse}` |
+| PUT | `/api/admin/validation-settings` | ADMIN | Updates validation tuning parameters immediately, no restart; rejects if the three weights don't sum to 1.0 | JSON `{confidenceThreshold, reviewMargin, retentionDays, inkDensityThreshold, weightCompleteness, weightFormat, weightSignature}` | `200 OK {ValidationSettingsResponse}` |
  
 ---
 
@@ -348,5 +392,5 @@ To avoid generic internal server errors (HTTP 500) and handle runtime anomalies 
 - **`EntityNotFoundException`:** Returns HTTP 404 Not Found when an operator attempts to verify a non-existent document ID, template ID, or user.
 - **`AuthenticationException`:** Returns HTTP 401 Unauthorized with a generic "wrong username or password" message on a failed `/api/auth/login` attempt.
 - **`AccessDeniedException`:** Returns HTTP 403 Forbidden (as clean JSON rather than Spring Security's default response) when `@PreAuthorize` rejects a request due to insufficient role.
-- **`IllegalArgumentException`:** Returns HTTP 400 Bad Request for invalid business input — e.g. a `/verify` target status outside `VALIDATED`/`REJECTED_EMPTY`/`REJECTED_INVALID`, or a template `fieldDefinitions` payload that fails JSON parsing at registration time.
+- **`IllegalArgumentException`:** Returns HTTP 400 Bad Request for invalid business input — e.g. a `/verify` target status outside `VALIDATED`/`REJECTED_EMPTY`/`REJECTED_INVALID`, a template `fieldDefinitions` payload that fails JSON parsing at registration time, or a `PUT /api/admin/validation-settings` payload whose `weightCompleteness + weightFormat + weightSignature` doesn't sum to 1.0 (§5.3).
 - **`DataIntegrityViolationException`:** Returns HTTP 409 Conflict when a database uniqueness constraint is violated, e.g. registering a template with a name that already exists.
