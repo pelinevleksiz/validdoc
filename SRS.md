@@ -7,53 +7,54 @@
 ## 1. Functional Requirements
 
 ### 1.1 User Authentication & Role-Based Access
-- Kimlik doğrulama **JWT tabanlı ve oturumsuz** olarak sağlanır; iki rol tanımlıdır: `admin`, `operator`. Token ömrü **10 dakikadır**, refresh mekanizması içermez.
-- Hesaplar yalnızca bir admin tarafından oluşturulur; herkese açık kayıt desteklenmez. İlk kurulumda sistem otomatik bir admin hesabı oluşturur.
-- Şifreler **BCrypt** ile saklanır; başarısız giriş denemeleri IP başına sınırlandırılır.
+- Authentication is **JWT-based and stateless**; two roles are defined: `admin`, `operator`. Token lifetime is **10 minutes**, with no refresh mechanism.
+- Accounts are created only by an admin; public self-registration is not supported. The system automatically creates one default admin account on first startup.
+- Passwords are stored using **BCrypt**; failed login attempts are rate-limited per source IP.
 
 ### 1.2 Document Upload & Management
-- PDF (**çok sayfa destekli**), PNG ve JPEG formatları kabul edilir; dosyalar diske yazılmadan bellekte işlenir.
-- Her yükleme zorunlu olarak bir **template**'e bağlanır; template-free doğrulama desteklenmez.
+- PDF (**multi-page supported**), PNG, and JPEG formats are accepted; files are processed in memory without being written to disk.
+- Every upload is required to reference a **template**; template-free validation is not supported.
 
 ### 1.3 Template-Based Segmentation & Rule-Based Validation
-- Admin, template üzerinde **sayfa ve koordinat bazlı segmentler** tanımlar; her segmente sistemin sunduğu sabit kataloglardan bir veya birden fazla kural atanır.
-- Kural kataloğu iki gruba ayrılır: *yapısal* (harf/rakam/uzunluk/tarih/imza-kaşe) ve *doğrulanmış format* (T.C. Kimlik No, VKN — checksum'lı, Telefon, E-posta).
-- Her segment **dolu-geçerli / dolu-geçersiz / boş** olarak değerlendirilir; sonuç segment bazında raporlanır, tek bir toplu skor kullanılmaz.
-- **Template'ler kaydedildikten sonra değiştirilemez**; düzeltme yeni bir template oluşturularak yapılır.
-- Admin, kaydetmeden önce örnek belge üzerinde segment koordinatlarını **önizleyebilir**.
+- An admin defines **page- and coordinate-based segments** on a template; each segment is assigned one or more rules from the system's fixed catalogs.
+- The rule catalog has two groups: *structural* (letters/digits/length/date/signature-stamp) and *validated format* (Turkish ID number, VKN — checksum-validated, phone, email).
+- Each segment is evaluated as **filled-valid / filled-invalid / empty**; the result is reported per segment, not as a single aggregate score.
+- **Templates cannot be modified once saved**; a correction is made by creating a new template.
+- An admin can **preview** segment coordinates against a sample document before saving.
 
 ### 1.4 Workflow & Approval Management
-- Belge statüsü segment sonuçlarından **deterministik** olarak türetilir: hepsi geçerliyse `VALIDATED`, hepsi boşsa `REJECTED_EMPTY`, karışıksa `REJECTED_INVALID` atanır.
-- `PENDING_REVIEW` yalnızca motor hatalarında (bozuk dosya, sayfa uyumsuzluğu) kullanılır; skor belirsizliğine dayalı bir ara durum bulunmaz.
-- Operatör, otomatik sonuçtan bağımsız olarak her belgeyi manuel onaylayabilir veya reddedebilir.
+- The upload request returns immediately with `202 Accepted`; document processing runs asynchronously in the background.
+- Document status is derived **deterministically** from segment results: all valid → `VALIDATED`, all empty → `REJECTED_EMPTY`, mixed → `REJECTED_INVALID`.
+- `PENDING_REVIEW` is used only for engine failures (corrupt file, page mismatch); there is no intermediate state driven by score uncertainty.
+- Every automatic and manual outcome is written to an **audit log**; an operator can manually approve or reject any document regardless of its automatic result.
 
 ### 1.5 Multi-Language Support (Turkish / English)
-- API hata ve geri bildirim mesajları `Accept-Language` header'ına göre TR/EN sunulur.
-- OCR tarama dili, arayüz dilinden bağımsız olarak upload anında ayrı bir parametreyle belirlenir.
+- API error and feedback messages are served in TR/EN based on the `Accept-Language` header.
+- The OCR scanning language is set independently of the UI language, via a separate parameter at upload time.
 
 ---
 
 ## 2. Technical & Architectural Requirements
 
 ### 2.1 Backend Architecture
-Uygulama Spring Boot 4.x ve Java 21 ile geliştirilir; **stateless** container olarak paketlenir ve yatay ölçeklenebilir.
+The application is built with Spring Boot 4.x and Java 21; it is packaged as a **stateless** container and is horizontally scalable.
 
 ### 2.2 OCR Engine Integration
-OCR işlemleri için Tesseract (Tess4J) lokal olarak entegre edilir; segment koordinatları kırpılarak okunur.
+Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are cropped and read directly from the page image.
 
 ### 2.3 Database & Persistence
-- Veri katmanında PostgreSQL ve Spring Data JPA kullanılır; yüklenen dosyalar yalnızca bellekte işlenir, kalıcı olarak saklanmaz.
-- İşlem tamamlandığında yalnızca sonuç (statü, segment raporu, zaman damgaları) kalıcı hale gelir; **saklama süresi** dolduğunda otomatik olarak silinir.
+- PostgreSQL and Spring Data JPA are used at the data layer; uploaded files are processed in memory only and are never persisted.
+- Once processing completes, only the result (status, segment report, timestamps) is persisted; it is automatically erased once the **retention period** elapses.
 
 ---
 
 ## 3. Non-Functional Requirements
 
 ### 3.1 Security & Compliance
-- Belgeden çıkarılan kişisel veriler **maskelenerek AES-256-GCM ile şifreli** saklanır; konfigüre edilebilir bir süre sonunda silinir.
-- Her kullanıcı işlemi değiştirilemez bir **audit log**'a kaydedilir.
+- Personal data extracted from documents is **masked and stored encrypted with AES-256-GCM**; it is deleted after a configurable retention period.
+- Every user action is recorded in an immutable **audit log**.
 
 ### 3.2 Performance & Scalability
-- Uygulama stateless container olarak çoğaltılabilir şekilde tasarlanır.
-- Tek sayfalık standart bir belgenin uçtan uca işlenmesi **3 saniyenin altında** tamamlanır; yükleme isteği hemen döner, işleme arka planda asenkron yürütülür.
-- Kimlik doğrulaması gerektirmeyen bir **health-check** endpoint'i sağlanır.
+- The application is designed to be replicated as a stateless container.
+- End-to-end processing of a standard single-page document completes in **under 3 seconds**; the upload request itself returns immediately, with processing carried out asynchronously in the background.
+- An authentication-free **health-check** endpoint is provided.

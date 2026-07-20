@@ -46,7 +46,7 @@ public class MaskedDataEncryptionConverter implements AttributeConverter<String,
 
             return Base64.getEncoder().encodeToString(combined);
         } catch (Exception e) {
-            throw new IllegalStateException("extractedMaskedData sifrelenemedi", e);
+            throw new IllegalStateException("Alan sifrelenemedi", e);
         }
     }
 
@@ -68,7 +68,7 @@ public class MaskedDataEncryptionConverter implements AttributeConverter<String,
 
             return new String(plainText, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new IllegalStateException("extractedMaskedData cozulemedi", e);
+            throw new IllegalStateException("Alan cozulemedi", e);
         }
     }
 }

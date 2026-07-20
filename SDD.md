@@ -1,7 +1,7 @@
 # Software Design Document (SDD) - validdoc
 
 ## 1. System Architecture
-Uygulama, katmanlı monolitik mimariyle (**Controller → Service → Repository**) Spring Boot 4.x üzerinde geliştirilir ve stateless container olarak paketlenir.
+The application follows a layered monolithic architecture (**Controller → Service → Repository**), built on Spring Boot 4.x, and is packaged as a stateless container.
 
 ```mermaid
 graph TD
@@ -13,27 +13,44 @@ graph TD
     B --> G[PDF Rasterize - PDFBox]
 ```
 
-Hassas alanlar (`segment_results`) JPA `AttributeConverter` seviyesinde **AES-256-GCM** ile şifrelenir; anahtar yalnızca env variable üzerinden sağlanır.
+Sensitive fields (`segment_results`) are encrypted at the JPA `AttributeConverter` level with **AES-256-GCM**; the key is supplied only via an environment variable.
 
 ### 1.1 Container Readiness
-Dockerfile `eclipse-temurin:21-jre-jammy` tabanlıdır; Tesseract 4.1.1 apt üzerinden kurulur ve `tessdata` yolu buna göre sabitlenir. Secret'lar (DB, JWT, encryption key) yalnızca env variable ile sağlanır.
+The Dockerfile is based on `eclipse-temurin:21-jre-jammy`; Tesseract 4.1.1 is installed via apt, and the `tessdata` path is fixed accordingly. Secrets (DB, JWT, encryption key) are supplied only via environment variables.
 
 ---
 
 ## 2. Data Flow Diagram
-Template'in ihtiyaç duyduğu sayfalar (tümü değil, yalnızca referans verilenler) rasterize edilir; her segment ilgili sayfadan kırpılıp okunur, kural motoru değerlendirir ve statü türetilir.
+Every request first passes through JWT authentication. The upload endpoint persists an initial record and returns `202 Accepted` immediately; the rest of the pipeline (page rasterization, OCR, rule evaluation, status derivation) runs asynchronously in the background. Only the pages a template's segments actually reference are rasterized — not the whole document — and every outcome, automatic or manual, is written to the audit log alongside the final status.
 
 ```mermaid
 graph TD
-    Upload[Belge Yukleme + templateId] --> Pages[Gereken Sayfalari Belirle]
-    Pages --> Raster[Sadece O Sayfalari Rasterize Et - PDFBox]
-    Raster --> OCR[Her Segmenti Kirp + Oku - Tesseract/OpenCV]
-    OCR --> Validate[Segment Basina Kural Degerlendirmesi]
-    Validate --> Status{Aggregate Status}
-    Status -->|hepsi valid| Validated[VALIDATED]
-    Status -->|hepsi empty| Empty[REJECTED_EMPTY]
-    Status -->|karisik| Invalid[REJECTED_INVALID]
-    Status -->|motor hatasi| Review[PENDING_REVIEW]
+    Client["Client"] -->|"POST /api/documents/upload + JWT + templateId"| Filter["JwtAuthenticationFilter"]
+    Filter -->|"invalid or expired token"| Auth401["401 Unauthorized"]
+    Filter -->|"valid token"| Controller["DocumentController"]
+
+    Controller -->|"1. create record, status=PROCESSING"| DB[("PostgreSQL")]
+    Controller -->|"2. return 202 Accepted"| Client
+    Controller -->|"3. delegate asynchronously"| Service["DocumentService"]
+
+    Service --> Resolve["Resolve Template + collect required pages from segments"]
+    Resolve -->|"PDF"| Raster["PdfRasterService: rasterize only the required pages"]
+    Resolve -->|"PNG / JPEG"| Single["Treat as single page 1"]
+    Raster --> OCR["OcrService: crop + read each segment"]
+    Single --> OCR
+    OCR --> Validate["ValidationService: evaluate each segment against its rules"]
+
+    Validate --> Eval{"Aggregate status"}
+    Eval -->|"all segments valid"| Validated["VALIDATED"]
+    Eval -->|"all segments empty"| Empty["REJECTED_EMPTY"]
+    Eval -->|"mixed outcome"| Invalid["REJECTED_INVALID"]
+    Eval -->|"engine failure"| Review["PENDING_REVIEW"]
+
+    Validated --> Save["Save status + segment_results, write audit log"]
+    Empty --> Save
+    Invalid --> Save
+    Review --> Save
+    Save --> DB
 ```
 
 ---
@@ -69,7 +86,7 @@ classDiagram
     DocumentMetadata --> Template
 ```
 
-**Ana paketler:** `controller` (REST uçları), `service` (OCR/validation/document orkestrasyonu), `model` (JPA entity'leri), `dto` (request/response/internal taşıyıcılar), `security` (JWT ve şifreleme), `exception` (merkezi hata yönetimi), `repository` (Spring Data JPA), `config` (Tesseract/async/settings altyapısı).
+**Main packages:** `controller` (REST endpoints), `service` (OCR/validation/document orchestration), `model` (JPA entities), `dto` (request/response/internal carriers), `security` (JWT and encryption), `exception` (centralized error handling), `repository` (Spring Data JPA), `config` (Tesseract/async/settings infrastructure).
 
 ---
 
@@ -120,44 +137,44 @@ erDiagram
     }
 ```
 
-**Not:** `templates` kaydedildikten sonra değiştirilemez; düzeltme yeni template oluşturularak yapılır. `audit_logs` append-only tutulur ve retention purge sürecinden muaftır.
+**Note:** `templates` cannot be modified once saved; a correction is made by registering a new template. `audit_logs` is append-only and is exempt from the retention purge process.
 
 ---
 
 ## 5. Core Algorithmic Decisions
 
-- **5.1 Bellekte İşleme:** Dosyalar diske hiç yazılmaz; işlem tamamlandığında `BufferedImage` GC'ye bırakılır. Maksimum dosya boyutu 5MB ile sınırlandırılır.
-- **5.2 Async İşleme:** OCR ve validation `@Async` thread pool (4-8 thread) üzerinden arka planda yürütülür; upload isteği hemen `202 Accepted` döner.
-- **5.3 Admin-Configurable Ayarlar:** Yalnızca `retentionDays` ve `inkDensityThreshold` çalışma zamanında (restart gerektirmeden) değiştirilebilir; `validation_settings` tablosunda tutulur.
-- **5.4 Segment Değerlendirme:** Her segment, kendi kurallarına göre `FILLED_VALID` / `FILLED_INVALID` / `EMPTY` olarak değerlendirilir; sonuç maskelenerek `segment_results` alanına JSON olarak yazılır. Belge statüsü bu sonuçlardan deterministik olarak türetilir (bkz. §2).
-- **5.5 Çok Dil (TR/EN):** `Accept-Language` header'ı API mesaj dilini, ayrı bir `lang` parametresi ise OCR tarama dilini belirler — birbirinden bağımsız iki ayrı sinyal olarak ele alınır. `Tesseract` thread-safe olmadığından her worker thread kendi instance'ını (`ThreadLocal`) tutar.
+- **5.1 In-Memory Processing:** Files are never written to disk; once processing completes, the `BufferedImage` is released for GC. A maximum file size of 5MB is enforced.
+- **5.2 Async Processing:** OCR and validation run in the background via an `@Async` thread pool (4-8 threads); the upload request returns `202 Accepted` immediately.
+- **5.3 Admin-Configurable Settings:** Only `retentionDays` and `inkDensityThreshold` can be changed at runtime (no restart required); they are stored in the `validation_settings` table.
+- **5.4 Segment Evaluation:** Each segment is evaluated against its own rules as `FILLED_VALID` / `FILLED_INVALID` / `EMPTY`; the result is masked and written as JSON into `segment_results`. Document status is derived deterministically from these results (see §2).
+- **5.5 Multi-Language (TR/EN):** The `Accept-Language` header determines the API message language, while a separate `lang` parameter determines the OCR scanning language — two independent signals. Since `Tesseract` is not thread-safe, each worker thread keeps its own instance (`ThreadLocal`).
 
 ---
 
 ## 6. API Endpoints
 
-| Method | Endpoint | Rol | Açıklama |
+| Method | Endpoint | Role | Description |
 |---|---|---|---|
-| GET | `/actuator/health` | Public | Kimlik doğrulamasız liveness check sağlar |
-| POST | `/api/auth/login` | Public | JWT üretir (10 dk geçerli) |
-| POST | `/api/users` | ADMIN | Yeni kullanıcı oluşturur |
-| GET/POST | `/api/templates` | ADMIN | Template listeler / segment ve kurallarla kaydeder (immutable) |
-| POST | `/api/templates/preview` | ADMIN | Kaydetmeden segment önizlemesi sağlar |
-| POST | `/api/documents/upload` | OPERATOR/ADMIN | Belge yükler, asenkron işler |
-| GET | `/api/documents/{id}` | OPERATOR/ADMIN | Belge ve segment raporunu döner |
-| GET | `/api/documents/queue` | OPERATOR/ADMIN | `PENDING_REVIEW` kuyruğunu döner |
-| POST | `/api/documents/{id}/verify` | OPERATOR | Manuel statü ataması yapar |
-| GET/PUT | `/api/admin/validation-settings` | ADMIN | Retention ve ink threshold değerlerini yönetir |
+| GET | `/actuator/health` | Public | Provides an authentication-free liveness check |
+| POST | `/api/auth/login` | Public | Issues a JWT (valid for 10 min) |
+| POST | `/api/users` | ADMIN | Creates a new user |
+| GET/POST | `/api/templates` | ADMIN | Lists templates / saves one with segments and rules (immutable) |
+| POST | `/api/templates/preview` | ADMIN | Provides a segment preview without saving |
+| POST | `/api/documents/upload` | OPERATOR/ADMIN | Uploads a document, processes it asynchronously |
+| GET | `/api/documents/{id}` | OPERATOR/ADMIN | Returns a document and its segment report |
+| GET | `/api/documents/queue` | OPERATOR/ADMIN | Returns the `PENDING_REVIEW` queue |
+| POST | `/api/documents/{id}/verify` | OPERATOR | Applies a manual status |
+| GET/PUT | `/api/admin/validation-settings` | ADMIN | Manages retention and ink threshold |
 
 ---
 
 ## 7. Security Architecture
-- Her istek `JwtAuthenticationFilter` üzerinden geçer; geçersiz veya süresi dolmuş token `401` ile sonuçlanır.
-- Login denemeleri IP başına dakikada **5** ile sınırlandırılır (in-memory).
-- Hesap oluşturma yalnızca admin rolüne açıktır; ilk açılışta tek bir admin hesabı otomatik olarak seed edilir.
+- Every request passes through `JwtAuthenticationFilter`; an invalid or expired token results in `401`.
+- Login attempts are rate-limited to **5 per minute per IP** (in-memory).
+- Account creation is restricted to admins; a single admin account is seeded automatically on first startup.
 
 ---
 
 ## 8. Global Exception & Failure Handling
-- İş mantığı hataları `ApiException` ve `ErrorCode` ile fırlatılır; `@RestControllerAdvice` bunları `Accept-Language`'a göre lokalize edilmiş `{code, message}` formatında döner.
-- Motor hataları (OCR/PDF/OpenCV/template uyumsuzluğu) HTTP katmanına yansımaz; `@Async` pipeline içinde yakalanarak belge `PENDING_REVIEW`'e düşürülür ve `audit_logs`'a kaydedilir.
+- Business logic errors are thrown as `ApiException` with an `ErrorCode`; `@RestControllerAdvice` returns them as a localized `{code, message}` payload (based on `Accept-Language`).
+- Engine failures (OCR/PDF/OpenCV/template mismatch) never surface as HTTP errors — they are caught inside the `@Async` pipeline, the document is moved to `PENDING_REVIEW`, and the outcome is written to `audit_logs`.

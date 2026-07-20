@@ -1,5 +1,6 @@
 package com.validdoc.controller;
 
+import com.validdoc.config.DocumentGeometry;
 import com.validdoc.dto.request.SegmentRuleRequest;
 import com.validdoc.dto.request.TemplatePreviewSegmentRequest;
 import com.validdoc.dto.request.TemplateRequest;
@@ -36,8 +37,6 @@ import java.util.Map;
 public class TemplateController {
 
     private static final Logger log = LoggerFactory.getLogger(TemplateController.class);
-    private static final double A4_WIDTH_PX = 2480;
-    private static final double A4_HEIGHT_PX = 3508;
 
     private final TemplateRepository templateRepository;
     private final TemplatePreviewService templatePreviewService;
@@ -125,7 +124,9 @@ public class TemplateController {
     }
 
     private void validateSegmentCoordinates(String label, double x, double y, double w, double h) {
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > A4_WIDTH_PX || y + h > A4_HEIGHT_PX) {
+        if (x < 0 || y < 0 || w <= 0 || h <= 0
+                || x + w > DocumentGeometry.A4_WIDTH_PX
+                || y + h > DocumentGeometry.A4_HEIGHT_PX) {
             throw new ApiException(ErrorCode.INVALID_SEGMENT_COORDINATES, label);
         }
     }

@@ -54,4 +54,4 @@ public class ValidationSettingsService {
         current = repository.save(updated);
         return current;
     }
-}}
+}

@@ -29,11 +29,11 @@ public class RetentionCleanupJob {
 
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
-    public void purgeExpiredMaskedData() {
-        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqualAndExtractedMaskedDataIsNotNull(LocalDateTime.now());
+    public void purgeExpiredSegmentResults() {
+        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(LocalDateTime.now());
 
         for (DocumentMetadata document : expired) {
-            document.setExtractedMaskedData(null);
+            document.setSegmentResults(null);
             documentRepository.save(document);
             auditLogRepository.save(new AuditLog(document.getId(), RETENTION_PURGE_ACTION, "SYSTEM"));
         }

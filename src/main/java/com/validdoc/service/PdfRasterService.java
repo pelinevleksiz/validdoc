@@ -1,5 +1,6 @@
 package com.validdoc.service;
 
+import com.validdoc.config.DocumentGeometry;
 import com.validdoc.exception.PageOutOfBoundsException;
 import com.validdoc.exception.PdfRasterizationException;
 import org.apache.pdfbox.Loader;
@@ -16,8 +17,6 @@ import java.util.Set;
 
 @Service
 public class PdfRasterService {
-
-    private static final int RENDER_DPI = 300;
 
     public Map<Integer, BufferedImage> renderPages(InputStream pdfStream, Set<Integer> pageNumbers) {
         byte[] pdfBytes;
@@ -44,7 +43,7 @@ public class PdfRasterService {
             PDFRenderer renderer = new PDFRenderer(document);
             Map<Integer, BufferedImage> rendered = new LinkedHashMap<>();
             for (Integer pageNumber : pageNumbers) {
-                rendered.put(pageNumber, renderer.renderImageWithDPI(pageNumber - 1, RENDER_DPI));
+                rendered.put(pageNumber, renderer.renderImageWithDPI(pageNumber - 1, DocumentGeometry.RENDER_DPI));
             }
             return rendered;
         } catch (IOException e) {
