@@ -1,4 +1,4 @@
-HELP.md
+
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### validdoc local test artifacts ###
+*.json
+!package.json
+test.png
+*.log
+.env

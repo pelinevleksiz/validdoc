@@ -12,7 +12,7 @@ public class CreateUserRequest {
     private String username;
 
     @NotBlank
-    @Size(min = 8, message = "Sifre en az 8 karakter olmalidir")
+    @Size(min = 8, message = "{error.password.min_size}")
     private String password;
 
     @NotBlank

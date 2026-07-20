@@ -15,6 +15,7 @@ import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.service.DocumentService;
+import com.validdoc.service.NotificationService;
 import com.validdoc.service.ValidationSettingsService;
 import jakarta.validation.Valid;
 import org.springframework.context.MessageSource;
@@ -42,6 +43,7 @@ public class DocumentController {
     private final AuditLogRepository auditLogRepository;
     private final DocumentService documentService;
     private final ValidationSettingsService validationSettingsService;
+    private final NotificationService notificationService;
     private final MessageSource messageSource;
 
     public DocumentController(DocumentRepository documentRepository,
@@ -50,6 +52,7 @@ public class DocumentController {
                               AuditLogRepository auditLogRepository,
                               DocumentService documentService,
                               ValidationSettingsService validationSettingsService,
+                              NotificationService notificationService,
                               MessageSource messageSource) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
@@ -57,6 +60,7 @@ public class DocumentController {
         this.auditLogRepository = auditLogRepository;
         this.documentService = documentService;
         this.validationSettingsService = validationSettingsService;
+        this.notificationService = notificationService;
         this.messageSource = messageSource;
     }
 
@@ -91,6 +95,14 @@ public class DocumentController {
         body.put("status", document.getStatus().name());
         body.put("language", document.getLanguage().name());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+    public ResponseEntity<DocumentSummaryResponse> getById(@PathVariable Long id) {
+        DocumentMetadata document = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
+        return ResponseEntity.ok(toSummary(document));
     }
 
     @GetMapping("/queue")
@@ -129,6 +141,10 @@ public class DocumentController {
         documentRepository.save(document);
 
         auditLogRepository.save(new AuditLog(document.getId(), "MANUAL_" + target.name(), operator.getUsername()));
+
+        if (target == DocumentStatus.REJECTED_EMPTY || target == DocumentStatus.REJECTED_INVALID) {
+            notificationService.notifyRejection(document);
+        }
 
         String message = messageSource.getMessage("message.document.status_updated", null, locale);
         return ResponseEntity.ok(Map.of("message", message));

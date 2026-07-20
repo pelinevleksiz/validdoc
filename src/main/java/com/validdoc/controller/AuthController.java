@@ -7,6 +7,8 @@ import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.User;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.security.JwtService;
+import com.validdoc.security.LoginRateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -23,17 +25,24 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final JwtService jwtService;
+    private final LoginRateLimiter loginRateLimiter;
 
     public AuthController(AuthenticationManager authenticationManager,
                           UserRepository userRepository,
-                          JwtService jwtService) {
+                          JwtService jwtService,
+                          LoginRateLimiter loginRateLimiter) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.jwtService = jwtService;
+        this.loginRateLimiter = loginRateLimiter;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        if (!loginRateLimiter.tryConsume(httpRequest.getRemoteAddr())) {
+            throw new ApiException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS);
+        }
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
