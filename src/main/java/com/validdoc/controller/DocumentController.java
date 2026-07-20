@@ -2,6 +2,7 @@ package com.validdoc.controller;
 
 import com.validdoc.dto.request.VerificationRequest;
 import com.validdoc.dto.response.DocumentSummaryResponse;
+import com.validdoc.dto.response.PagedResponse;
 import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.AuditLog;
@@ -14,10 +15,14 @@ import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
+import com.validdoc.security.UploadRateLimiter;
 import com.validdoc.service.DocumentService;
+import com.validdoc.service.FileSignatureValidator;
 import com.validdoc.service.ValidationSettingsService;
 import jakarta.validation.Valid;
 import org.springframework.context.MessageSource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,6 +48,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final ValidationSettingsService validationSettingsService;
     private final MessageSource messageSource;
+    private final UploadRateLimiter uploadRateLimiter;
 
     public DocumentController(DocumentRepository documentRepository,
                               TemplateRepository templateRepository,
@@ -50,7 +56,8 @@ public class DocumentController {
                               AuditLogRepository auditLogRepository,
                               DocumentService documentService,
                               ValidationSettingsService validationSettingsService,
-                              MessageSource messageSource) {
+                              MessageSource messageSource,
+                              UploadRateLimiter uploadRateLimiter) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
@@ -58,6 +65,7 @@ public class DocumentController {
         this.documentService = documentService;
         this.validationSettingsService = validationSettingsService;
         this.messageSource = messageSource;
+        this.uploadRateLimiter = uploadRateLimiter;
     }
 
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
@@ -66,8 +74,18 @@ public class DocumentController {
                                                       @RequestParam(value = "templateId", required = false) Long templateId,
                                                       @RequestParam(value = "lang", required = false) String lang,
                                                       Authentication authentication) throws IOException {
+        if (!uploadRateLimiter.tryConsume(authentication.getName())) {
+            throw new ApiException(ErrorCode.TOO_MANY_UPLOAD_ATTEMPTS);
+        }
+
         if (templateId == null) {
             throw new ApiException(ErrorCode.TEMPLATE_ID_REQUIRED);
+        }
+
+        byte[] fileBytes = file.getBytes();
+        String detectedContentType = FileSignatureValidator.detectContentType(fileBytes);
+        if (detectedContentType == null) {
+            throw new ApiException(ErrorCode.UNSUPPORTED_FILE_TYPE);
         }
 
         User uploader = userRepository.findByUsername(authentication.getName())
@@ -86,13 +104,22 @@ public class DocumentController {
         document = documentRepository.save(document);
         auditLogRepository.save(new AuditLog(document.getId(), "DOCUMENT_UPLOADED", uploader.getUsername()));
 
-        documentService.processDocument(document.getId(), file.getBytes(), file.getContentType(), templateId);
+        documentService.processDocument(document.getId(), fileBytes, detectedContentType, templateId);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("documentId", document.getId());
         body.put("status", document.getStatus().name());
         body.put("language", document.getLanguage().name());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+    public ResponseEntity<PagedResponse<DocumentSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
+                                                                       @RequestParam(defaultValue = "20") int size) {
+        Page<DocumentMetadata> result = documentRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, size));
+        List<DocumentSummaryResponse> content = result.getContent().stream().map(this::toSummary).toList();
+        return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
     }
 
     @GetMapping("/{id}")
@@ -105,12 +132,11 @@ public class DocumentController {
 
     @GetMapping("/queue")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<List<DocumentSummaryResponse>> queue() {
-        List<DocumentSummaryResponse> response = documentRepository.findByStatus(DocumentStatus.PENDING_REVIEW)
-                .stream()
-                .map(this::toSummary)
-                .toList();
-        return ResponseEntity.ok(response);
+    public ResponseEntity<PagedResponse<DocumentSummaryResponse>> queue(@RequestParam(defaultValue = "0") int page,
+                                                                        @RequestParam(defaultValue = "20") int size) {
+        Page<DocumentMetadata> result = documentRepository.findByStatus(DocumentStatus.PENDING_REVIEW, PageRequest.of(page, size));
+        List<DocumentSummaryResponse> content = result.getContent().stream().map(this::toSummary).toList();
+        return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
     }
 
     @PostMapping("/{id}/verify")

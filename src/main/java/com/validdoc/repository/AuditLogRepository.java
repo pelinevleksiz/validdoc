@@ -1,6 +1,8 @@
 package com.validdoc.repository;
 
 import com.validdoc.model.AuditLog;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,4 +18,8 @@ public interface AuditLogRepository extends org.springframework.data.repository.
     List<AuditLog> findAll();
 
     List<AuditLog> findByDocumentId(Long documentId);
+
+    Page<AuditLog> findAll(Pageable pageable);
+
+    Page<AuditLog> findByDocumentId(Long documentId, Pageable pageable);
 }

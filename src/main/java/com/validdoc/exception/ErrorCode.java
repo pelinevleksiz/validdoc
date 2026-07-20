@@ -5,8 +5,10 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "error.file.too_large"),
+    UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "error.file.unsupported_type"),
     SERVER_BUSY(HttpStatus.TOO_MANY_REQUESTS, "error.server.busy"),
     TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "error.auth.too_many_attempts"),
+    TOO_MANY_UPLOAD_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "error.document.too_many_uploads"),
     BAD_CREDENTIALS(HttpStatus.UNAUTHORIZED, "error.auth.bad_credentials"),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "error.access.denied"),
     DUPLICATE_RECORD(HttpStatus.CONFLICT, "error.record.duplicate"),

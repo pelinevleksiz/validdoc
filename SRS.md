@@ -14,6 +14,8 @@
 ### 1.2 Document Upload & Management
 - PDF (**multi-page supported**), PNG, and JPEG formats are accepted; files are processed in memory without being written to disk.
 - Every upload is required to reference a **template**; template-free validation is not supported.
+- The accepted file type is determined from the file's actual content (signature bytes), not from the client-supplied `Content-Type` header alone.
+- Upload requests are rate-limited per user to prevent a single account from overwhelming the processing pipeline.
 
 ### 1.3 Template-Based Segmentation & Rule-Based Validation
 - An admin defines **page- and coordinate-based segments** on a template; each segment is assigned one or more rules from the system's fixed catalogs.

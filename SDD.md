@@ -148,23 +148,33 @@ erDiagram
 - **5.3 Admin-Configurable Settings:** Only `retentionDays` and `inkDensityThreshold` can be changed at runtime (no restart required); they are stored in the `validation_settings` table.
 - **5.4 Segment Evaluation:** Each segment is evaluated against its own rules as `FILLED_VALID` / `FILLED_INVALID` / `EMPTY`; the result is masked and written as JSON into `segment_results`. Document status is derived deterministically from these results (see §2).
 - **5.5 Multi-Language (TR/EN):** The `Accept-Language` header determines the API message language, while a separate `lang` parameter determines the OCR scanning language — two independent signals. Since `Tesseract` is not thread-safe, each worker thread keeps its own instance (`ThreadLocal`).
+- **5.6 Upload Hardening:** the accepted file type is determined from the file's actual signature bytes (`FileSignatureValidator`) rather than the client-supplied `Content-Type` header, since the latter is trivially spoofable. Upload requests are also rate-limited per authenticated user (`UploadRateLimiter`, 20 requests per 60 seconds, in-memory) to protect the async processing pipeline from a single account's burst traffic.
 
 ---
 
 ## 6. API Endpoints
+
+**Coordinate contract:** every segment coordinate (`x`, `y`, `w`, `h`) is expressed in **pixels at 300 DPI**, the same resolution `PdfRasterService` uses to rasterize PDF pages (see §5.1). An A4 page therefore spans **2480×3508 px** (`DocumentGeometry.A4_WIDTH_PX` / `A4_HEIGHT_PX`); any segment whose bounds fall outside this box is rejected at template-registration time with `INVALID_SEGMENT_COORDINATES`. A frontend capturing coordinates from an on-screen canvas must scale its own pixel space to this 300-DPI/A4 basis before submitting a template — not to the screen's native resolution.
+
+**Pagination:** every list endpoint accepts `page` (0-indexed, default `0`) and `size` (default `20`) query parameters and returns a `PagedResponse` envelope (`content`, `page`, `size`, `totalElements`, `totalPages`) rather than a bare array.
 
 | Method | Endpoint | Role | Description |
 |---|---|---|---|
 | GET | `/actuator/health` | Public | Provides an authentication-free liveness check |
 | POST | `/api/auth/login` | Public | Issues a JWT (valid for 10 min) |
 | POST | `/api/users` | ADMIN | Creates a new user |
-| GET/POST | `/api/templates` | ADMIN | Lists templates / saves one with segments and rules (immutable) |
+| GET | `/api/templates` | OPERATOR/ADMIN | Lists templates (paginated) |
+| POST | `/api/templates` | ADMIN | Saves a template with segments and rules (immutable) |
+| GET | `/api/templates/{id}` | OPERATOR/ADMIN | Returns a template's full segment and rule detail |
+| GET | `/api/templates/rule-types` | ADMIN | Returns the fixed rule catalog, flagging which rules take a param and which are ink-based |
 | POST | `/api/templates/preview` | ADMIN | Provides a segment preview without saving |
 | POST | `/api/documents/upload` | OPERATOR/ADMIN | Uploads a document, processes it asynchronously |
+| GET | `/api/documents` | OPERATOR/ADMIN | Lists all documents, newest first (paginated) |
 | GET | `/api/documents/{id}` | OPERATOR/ADMIN | Returns a document and its segment report |
-| GET | `/api/documents/queue` | OPERATOR/ADMIN | Returns the `PENDING_REVIEW` queue |
+| GET | `/api/documents/queue` | OPERATOR/ADMIN | Returns the `PENDING_REVIEW` queue (paginated) |
 | POST | `/api/documents/{id}/verify` | OPERATOR | Applies a manual status |
 | GET/PUT | `/api/admin/validation-settings` | ADMIN | Manages retention and ink threshold |
+| GET | `/api/admin/audit-logs` | ADMIN | Lists audit log entries, optionally filtered by `documentId` (paginated) |
 
 ---
 

@@ -5,7 +5,12 @@ import com.validdoc.dto.request.SegmentRuleRequest;
 import com.validdoc.dto.request.TemplatePreviewSegmentRequest;
 import com.validdoc.dto.request.TemplateRequest;
 import com.validdoc.dto.request.TemplateSegmentRequest;
+import com.validdoc.dto.response.PagedResponse;
+import com.validdoc.dto.response.RuleTypeResponse;
+import com.validdoc.dto.response.SegmentRuleDetailResponse;
+import com.validdoc.dto.response.TemplateDetailResponse;
 import com.validdoc.dto.response.TemplatePreviewSegmentResponse;
+import com.validdoc.dto.response.TemplateSegmentDetailResponse;
 import com.validdoc.dto.response.TemplateSummaryResponse;
 import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
@@ -15,10 +20,13 @@ import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
 import com.validdoc.repository.TemplateRepository;
+import com.validdoc.service.FileSignatureValidator;
 import com.validdoc.service.TemplatePreviewService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +37,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -52,11 +61,33 @@ public class TemplateController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<List<TemplateSummaryResponse>> list() {
-        List<TemplateSummaryResponse> response = templateRepository.findAll().stream()
+    public ResponseEntity<PagedResponse<TemplateSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
+                                                                       @RequestParam(defaultValue = "20") int size) {
+        Page<Template> result = templateRepository.findAll(PageRequest.of(page, size));
+        List<TemplateSummaryResponse> content = result.getContent().stream()
                 .map(t -> new TemplateSummaryResponse(t.getId(), t.getName()))
                 .toList();
+        return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
+    }
+
+    @GetMapping("/rule-types")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<RuleTypeResponse>> ruleTypes() {
+        List<RuleTypeResponse> response = Arrays.stream(SegmentRuleType.values())
+                .map(rt -> new RuleTypeResponse(
+                        rt.name(),
+                        rt == SegmentRuleType.MIN_LENGTH || rt == SegmentRuleType.MAX_LENGTH,
+                        rt == SegmentRuleType.SIGNATURE_INK || rt == SegmentRuleType.STAMP_INK))
+                .toList();
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+    public ResponseEntity<TemplateDetailResponse> getById(@PathVariable Long id) {
+        Template template = templateRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(id)));
+        return ResponseEntity.ok(toDetail(template));
     }
 
     @PostMapping
@@ -117,10 +148,32 @@ public class TemplateController {
                     segment.getW(), segment.getH());
         }
 
+        byte[] fileBytes = file.getBytes();
+        String detectedContentType = FileSignatureValidator.detectContentType(fileBytes);
+        if (detectedContentType == null) {
+            throw new ApiException(ErrorCode.UNSUPPORTED_FILE_TYPE);
+        }
+
         List<TemplatePreviewSegmentResponse> results = templatePreviewService.preview(
-                file.getBytes(), file.getContentType(), segments, DocumentLanguage.fromParam(lang));
+                fileBytes, detectedContentType, segments, DocumentLanguage.fromParam(lang));
 
         return ResponseEntity.ok(Map.of("segments", results));
+    }
+
+    private TemplateDetailResponse toDetail(Template template) {
+        List<TemplateSegmentDetailResponse> segments = template.getSegments().stream()
+                .map(segment -> new TemplateSegmentDetailResponse(
+                        segment.getLabel(),
+                        segment.getPage(),
+                        segment.getX(),
+                        segment.getY(),
+                        segment.getW(),
+                        segment.getH(),
+                        segment.getRules().stream()
+                                .map(rule -> new SegmentRuleDetailResponse(rule.getRuleType().name(), rule.getParam()))
+                                .toList()))
+                .toList();
+        return new TemplateDetailResponse(template.getId(), template.getName(), segments);
     }
 
     private void validateSegmentCoordinates(String label, double x, double y, double w, double h) {
