@@ -36,13 +36,8 @@ public class ValidationSettingsController {
     public ResponseEntity<ValidationSettingsResponse> update(@Valid @RequestBody ValidationSettingsUpdateRequest request,
                                                              Authentication authentication) {
         ValidationSettings updated = settingsService.update(
-                request.getConfidenceThreshold(),
-                request.getReviewMargin(),
                 request.getRetentionDays(),
                 request.getInkDensityThreshold(),
-                request.getWeightCompleteness(),
-                request.getWeightFormat(),
-                request.getWeightSignature(),
                 authentication.getName());
 
         auditLogRepository.save(new AuditLog("VALIDATION_SETTINGS_UPDATED", authentication.getName()));
@@ -52,13 +47,8 @@ public class ValidationSettingsController {
 
     private ValidationSettingsResponse toResponse(ValidationSettings settings) {
         return new ValidationSettingsResponse(
-                settings.getConfidenceThreshold(),
-                settings.getReviewMargin(),
                 settings.getRetentionDays(),
                 settings.getInkDensityThreshold(),
-                settings.getWeightCompleteness(),
-                settings.getWeightFormat(),
-                settings.getWeightSignature(),
                 settings.getUpdatedAt(),
                 settings.getUpdatedBy());
     }

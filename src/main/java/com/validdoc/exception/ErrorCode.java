@@ -14,8 +14,11 @@ public enum ErrorCode {
     TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.template.not_found"),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "error.document.not_found"),
     INVALID_DOCUMENT_STATUS(HttpStatus.BAD_REQUEST, "error.document.invalid_status"),
-    INVALID_FIELD_DEFINITIONS(HttpStatus.BAD_REQUEST, "error.template.invalid_field_definitions"),
-    INVALID_WEIGHTS_SUM(HttpStatus.BAD_REQUEST, "error.settings.weights_sum"),
+    INVALID_SEGMENT_COORDINATES(HttpStatus.BAD_REQUEST, "error.template.invalid_segment_coordinates"),
+    INVALID_SEGMENT_RULE_COMBINATION(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_combination"),
+    INVALID_RULE_PARAM(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_param"),
+    TEMPLATE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "error.document.template_id_required"),
+    PREVIEW_FAILED(HttpStatus.BAD_REQUEST, "error.template.preview_failed"),
     INTERNAL_UNEXPECTED(HttpStatus.INTERNAL_SERVER_ERROR, "error.internal.unexpected");
 
     private final HttpStatus status;

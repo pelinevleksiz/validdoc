@@ -2,6 +2,9 @@ package com.validdoc.model;
 
 import jakarta.persistence.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "templates")
 public class Template {
@@ -13,8 +16,8 @@ public class Template {
     @Column(nullable = false, unique = true, length = 100)
     private String name;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String fieldDefinitions;
+    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TemplateSegment> segments = new ArrayList<>();
 
     public Template() {}
 
@@ -24,6 +27,6 @@ public class Template {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public String getFieldDefinitions() { return fieldDefinitions; }
-    public void setFieldDefinitions(String fieldDefinitions) { this.fieldDefinitions = fieldDefinitions; }
+    public List<TemplateSegment> getSegments() { return segments; }
+    public void setSegments(List<TemplateSegment> segments) { this.segments = segments; }
 }

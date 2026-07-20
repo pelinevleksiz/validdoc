@@ -1,20 +1,22 @@
 package com.validdoc.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+
+import java.util.List;
 
 public class TemplateRequest {
 
     @NotBlank
     private String name;
 
-    @NotBlank
-    private String fieldDefinitions;
-
-    public TemplateRequest() {}
+    @NotEmpty
+    private List<@Valid TemplateSegmentRequest> segments;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public String getFieldDefinitions() { return fieldDefinitions; }
-    public void setFieldDefinitions(String fieldDefinitions) { this.fieldDefinitions = fieldDefinitions; }
+    public List<TemplateSegmentRequest> getSegments() { return segments; }
+    public void setSegments(List<TemplateSegmentRequest> segments) { this.segments = segments; }
 }

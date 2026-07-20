@@ -2,7 +2,6 @@ package com.validdoc.dto.response;
 
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
-import com.validdoc.model.enums.ValidationMode;
 
 import java.time.LocalDateTime;
 
@@ -10,28 +9,22 @@ public class DocumentSummaryResponse {
 
     private Long id;
     private DocumentStatus status;
-    private ValidationMode validationMode;
     private Long templateId;
     private DocumentLanguage language;
-    private Double confidenceScore;
-    private String validationErrorLogs;
-    private String extractedMaskedData;
+    private String segmentResults;
     private LocalDateTime uploadedAt;
     private LocalDateTime processedAt;
 
     public DocumentSummaryResponse() {}
 
-    public DocumentSummaryResponse(Long id, DocumentStatus status, ValidationMode validationMode, Long templateId,
-                                   DocumentLanguage language, Double confidenceScore, String validationErrorLogs,
-                                   String extractedMaskedData, LocalDateTime uploadedAt, LocalDateTime processedAt) {
+    public DocumentSummaryResponse(Long id, DocumentStatus status, Long templateId,
+                                   DocumentLanguage language, String segmentResults,
+                                   LocalDateTime uploadedAt, LocalDateTime processedAt) {
         this.id = id;
         this.status = status;
-        this.validationMode = validationMode;
         this.templateId = templateId;
         this.language = language;
-        this.confidenceScore = confidenceScore;
-        this.validationErrorLogs = validationErrorLogs;
-        this.extractedMaskedData = extractedMaskedData;
+        this.segmentResults = segmentResults;
         this.uploadedAt = uploadedAt;
         this.processedAt = processedAt;
     }
@@ -42,23 +35,14 @@ public class DocumentSummaryResponse {
     public DocumentStatus getStatus() { return status; }
     public void setStatus(DocumentStatus status) { this.status = status; }
 
-    public ValidationMode getValidationMode() { return validationMode; }
-    public void setValidationMode(ValidationMode validationMode) { this.validationMode = validationMode; }
-
     public Long getTemplateId() { return templateId; }
     public void setTemplateId(Long templateId) { this.templateId = templateId; }
 
     public DocumentLanguage getLanguage() { return language; }
     public void setLanguage(DocumentLanguage language) { this.language = language; }
 
-    public Double getConfidenceScore() { return confidenceScore; }
-    public void setConfidenceScore(Double confidenceScore) { this.confidenceScore = confidenceScore; }
-
-    public String getValidationErrorLogs() { return validationErrorLogs; }
-    public void setValidationErrorLogs(String validationErrorLogs) { this.validationErrorLogs = validationErrorLogs; }
-
-    public String getExtractedMaskedData() { return extractedMaskedData; }
-    public void setExtractedMaskedData(String extractedMaskedData) { this.extractedMaskedData = extractedMaskedData; }
+    public String getSegmentResults() { return segmentResults; }
+    public void setSegmentResults(String segmentResults) { this.segmentResults = segmentResults; }
 
     public LocalDateTime getUploadedAt() { return uploadedAt; }
     public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }

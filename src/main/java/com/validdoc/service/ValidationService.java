@@ -1,20 +1,16 @@
 package com.validdoc.service;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.json.JsonMapper;
-import com.validdoc.dto.internal.TemplateFieldDefinition;
+import com.validdoc.dto.internal.SegmentReading;
 import com.validdoc.dto.internal.ValidationResult;
-import com.validdoc.dto.ocr.FieldType;
-import com.validdoc.dto.ocr.OcrDocumentResult;
-import com.validdoc.dto.ocr.OcrFieldResult;
-import com.validdoc.exception.TemplateDefinitionException;
-import com.validdoc.model.Template;
+import com.validdoc.model.SegmentRule;
+import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentStatus;
-import com.validdoc.model.enums.ValidationMode;
+import com.validdoc.model.enums.SegmentRuleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -32,24 +28,21 @@ public class ValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationService.class);
 
-    private static final int MIN_TEXT_LENGTH_FOR_NON_EMPTY = 5;
-
-    private static final List<String> DEFAULT_TEMPLATE_FREE_LABELS =
-            List.of("name", "signature", "date", "id_number");
-
-    private static final Pattern ID_NUMBER_PATTERN = Pattern.compile("^\\d{11}$");
+    private static final Pattern TC_KIMLIK_NO_PATTERN = Pattern.compile("^\\d{11}$");
     private static final Pattern VKN_PATTERN = Pattern.compile("^\\d{10}$");
-    private static final Pattern PHONE_PATTERN =
+    private static final Pattern PHONE_TR_PATTERN =
             Pattern.compile("^(\\+90|0)?\\s?5\\d{2}\\s?\\d{3}\\s?\\d{2}\\s?\\d{2}$");
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[\\w.+-]+@[\\w-]+\\.[a-zA-Z]{2,}$");
+    private static final Pattern LETTERS_ONLY_PATTERN = Pattern.compile("^[\\p{L} ]+$");
+    private static final Pattern DIGITS_ONLY_PATTERN = Pattern.compile("^\\d+$");
+    private static final Pattern ALPHANUMERIC_PATTERN = Pattern.compile("^[\\p{L}\\d]+$");
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("tr-TR"))
                     .withResolverStyle(ResolverStyle.STRICT);
     private static final DateTimeFormatter DATE_FORMATTER_DOTTED =
             DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("tr-TR"))
                     .withResolverStyle(ResolverStyle.STRICT);
-
-    private static final Pattern CONSONANT_RUN_PATTERN =
-            Pattern.compile("(?i)[bcçdfgğhjklmnpqrsştvwxyz]{5,}");
 
     private final ValidationSettingsService settings;
     private final JsonMapper jsonMapper;
@@ -59,172 +52,85 @@ public class ValidationService {
         this.jsonMapper = jsonMapper;
     }
 
-    public ValidationResult validate(OcrDocumentResult ocrResult, Template template) {
-        ValidationMode mode = template != null ? ValidationMode.TEMPLATED : ValidationMode.TEMPLATE_FREE;
+    public ValidationResult validate(List<SegmentReading> readings) {
+        List<Map<String, Object>> segmentEntries = new ArrayList<>();
+        int emptyCount = 0;
+        int validCount = 0;
 
-        List<String> requiredLabels = resolveRequiredLabels(mode, template);
+        for (SegmentReading reading : readings) {
+            TemplateSegment segment = reading.getSegment();
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("label", segment.getLabel());
 
-        Map<String, OcrFieldResult> fieldsByLabel = new LinkedHashMap<>();
-        for (OcrFieldResult f : ocrResult.getFields()) {
-            fieldsByLabel.put(f.getLabel(), f);
-        }
-
-        boolean anyInkDetected = fieldsByLabel.values().stream()
-                .filter(f -> f.getType() == FieldType.INK_ZONE)
-                .anyMatch(f -> f.getPixelDensity() != null
-                        && f.getPixelDensity() >= settings.getInkDensityThreshold());
-
-        String rawText = ocrResult.getRawFullText() == null ? "" : ocrResult.getRawFullText().trim();
-
-        if (rawText.length() < MIN_TEXT_LENGTH_FOR_NON_EMPTY && !anyInkDetected) {
-            log.debug("Document classified as REJECTED_EMPTY (rawTextLength={}, anyInk={})",
-                    rawText.length(), anyInkDetected);
-            return new ValidationResult(DocumentStatus.REJECTED_EMPTY, mode, 0.0, null, null);
-        }
-
-        int totalRequired = requiredLabels.size();
-        int presentCount = 0;
-        for (String label : requiredLabels) {
-            OcrFieldResult field = fieldsByLabel.get(label);
-            if (field == null || field.getType() == FieldType.INK_ZONE) {
-                continue;
-            }
-            String text = field.getExtractedText() == null ? "" : field.getExtractedText().trim();
-            if (!text.isEmpty()) {
-                presentCount++;
-            }
-        }
-        double completeness = totalRequired == 0 ? 1.0 : (double) presentCount / totalRequired;
-
-        List<String> formatErrors = new ArrayList<>();
-        Map<String, String> maskedFields = new LinkedHashMap<>();
-        int checkedTextFields = 0;
-        for (OcrFieldResult field : fieldsByLabel.values()) {
-            if (field.getType() == FieldType.INK_ZONE) {
-                continue;
-            }
-            String text = field.getExtractedText() == null ? "" : field.getExtractedText().trim();
-            if (text.isEmpty()) {
-                continue;
-            }
-            checkedTextFields++;
-            boolean valid = isFieldValid(field.getLabel(), text);
-            if (!valid) {
-                formatErrors.add(field.getLabel());
+            if (reading.isInkSegment()) {
+                boolean inked = reading.getPixelDensity() != null
+                        && reading.getPixelDensity() >= settings.getInkDensityThreshold();
+                if (inked) {
+                    entry.put("outcome", "FILLED_VALID");
+                    validCount++;
+                } else {
+                    entry.put("outcome", "EMPTY");
+                    emptyCount++;
+                }
             } else {
-                maskedFields.put(field.getLabel(), maskValue(field.getLabel(), text));
+                String text = reading.getExtractedText() == null ? "" : reading.getExtractedText().trim();
+                if (text.isEmpty()) {
+                    entry.put("outcome", "EMPTY");
+                    emptyCount++;
+                } else {
+                    List<String> failedRules = evaluateTextRules(segment, text);
+                    if (failedRules.isEmpty()) {
+                        entry.put("outcome", "FILLED_VALID");
+                        validCount++;
+                    } else {
+                        entry.put("outcome", "FILLED_INVALID");
+                        entry.put("failedRules", failedRules);
+                    }
+                    entry.put("maskedValue", maskValue(segment, text));
+                }
             }
+            segmentEntries.add(entry);
         }
-
-        List<OcrFieldResult> requiredInkZones = new ArrayList<>();
-        for (String label : requiredLabels) {
-            OcrFieldResult field = fieldsByLabel.get(label);
-            if (field != null && field.getType() == FieldType.INK_ZONE) {
-                requiredInkZones.add(field);
-            }
-        }
-        double signatureScore;
-        if (requiredInkZones.isEmpty()) {
-            signatureScore = 1.0;
-        } else {
-            long inkedCount = requiredInkZones.stream()
-                    .filter(f -> f.getPixelDensity() != null
-                            && f.getPixelDensity() >= settings.getInkDensityThreshold())
-                    .count();
-            signatureScore = (double) inkedCount / requiredInkZones.size();
-        }
-
-        double formatCorrectness = checkedTextFields == 0
-                ? 1.0
-                : (double) (checkedTextFields - formatErrors.size()) / checkedTextFields;
-
-        if (!formatErrors.isEmpty()) {
-            double score = computeScore(completeness, formatCorrectness, signatureScore);
-            String errorLog = buildErrorLog(formatErrors);
-            String maskedJson = toJson(maskedFields);
-            log.debug("Document classified as REJECTED_INVALID, failedFields={}", formatErrors);
-            return new ValidationResult(DocumentStatus.REJECTED_INVALID, mode, score, errorLog, maskedJson);
-        }
-
-        double confidenceScore = computeScore(completeness, formatCorrectness, signatureScore);
-        String maskedJson = toJson(maskedFields);
-
-        double threshold = settings.getConfidenceThreshold();
-        double margin = settings.getReviewMargin();
 
         DocumentStatus status;
-        String errorLog = null;
-        if (confidenceScore >= threshold + margin) {
+        if (readings.isEmpty()) {
+            status = DocumentStatus.REJECTED_EMPTY;
+        } else if (emptyCount == readings.size()) {
+            status = DocumentStatus.REJECTED_EMPTY;
+        } else if (validCount == readings.size()) {
             status = DocumentStatus.VALIDATED;
-        } else if (confidenceScore <= threshold - margin) {
-            status = DocumentStatus.REJECTED_INVALID;
-            errorLog = buildErrorLog(List.of("insufficient_completeness"));
         } else {
-            status = DocumentStatus.PENDING_REVIEW;
+            status = DocumentStatus.REJECTED_INVALID;
         }
 
-        log.debug("Document classified as {}, score={}, completeness={}, format={}, signature={}",
-                status, confidenceScore, completeness, formatCorrectness, signatureScore);
+        log.debug("Document classified as {}, segments={}", status, segmentEntries);
 
-        return new ValidationResult(status, mode, confidenceScore, errorLog, maskedJson);
+        return new ValidationResult(status, toJson(segmentEntries));
     }
 
-    private List<String> resolveRequiredLabels(ValidationMode mode, Template template) {
-        if (mode == ValidationMode.TEMPLATED) {
-            return parseTemplateLabels(template);
-        }
-        return DEFAULT_TEMPLATE_FREE_LABELS;
-    }
-
-    private List<String> parseTemplateLabels(Template template) {
-        try {
-            List<TemplateFieldDefinition> defs = jsonMapper.readValue(
-                    template.getFieldDefinitions(),
-                    new TypeReference<List<TemplateFieldDefinition>>() {
-                    });
-            List<String> labels = new ArrayList<>();
-            for (TemplateFieldDefinition def : defs) {
-                labels.add(def.getLabel());
+    private List<String> evaluateTextRules(TemplateSegment segment, String text) {
+        List<String> failed = new ArrayList<>();
+        for (SegmentRule rule : segment.getRules()) {
+            if (!isRuleSatisfied(rule, text)) {
+                failed.add(rule.getRuleType().name());
             }
-            return labels;
-        } catch (JacksonException e) {
-            throw new TemplateDefinitionException(
-                    "Template field_definitions parse edilemedi, templateId=" + template.getId(), e);
         }
+        return failed;
     }
 
-    private double computeScore(double completeness, double formatCorrectness, double signatureScore) {
-        return settings.getWeightCompleteness() * completeness
-                + settings.getWeightFormat() * formatCorrectness
-                + settings.getWeightSignature() * signatureScore;
-    }
-
-    private String buildErrorLog(List<String> failedFields) {
-        try {
-            return jsonMapper.writeValueAsString(Map.of("invalidFields", failedFields));
-        } catch (JacksonException e) {
-            return "invalidFields=" + failedFields;
-        }
-    }
-
-    private String toJson(Map<String, String> maskedFields) {
-        if (maskedFields.isEmpty()) return null;
-        try {
-            return jsonMapper.writeValueAsString(maskedFields);
-        } catch (JacksonException e) {
-            log.warn("Masked field map serialize edilemedi, null olarak donuluyor", e);
-            return null;
-        }
-    }
-
-    private boolean isFieldValid(String label, String text) {
-        return switch (label.toLowerCase(Locale.ROOT)) {
-            case "id_number", "tc_no" -> ID_NUMBER_PATTERN.matcher(text).matches();
-            case "vkn" -> VKN_PATTERN.matcher(text).matches() && isValidVknChecksum(text);
-            case "phone", "phone_number" -> PHONE_PATTERN.matcher(text.replaceAll("\\s+", " ")).matches();
-            case "date" -> isValidDate(text) && !isDocumentDateInFuture(text);
-            case "name" -> !isGibberish(text);
-            default -> !isGibberish(text);
+    private boolean isRuleSatisfied(SegmentRule rule, String text) {
+        return switch (rule.getRuleType()) {
+            case LETTERS_ONLY -> LETTERS_ONLY_PATTERN.matcher(text).matches();
+            case DIGITS_ONLY -> DIGITS_ONLY_PATTERN.matcher(text).matches();
+            case ALPHANUMERIC -> ALPHANUMERIC_PATTERN.matcher(text).matches();
+            case DATE -> isValidDate(text) && !isDocumentDateInFuture(text);
+            case MIN_LENGTH -> rule.getParam() != null && text.length() >= rule.getParam();
+            case MAX_LENGTH -> rule.getParam() != null && text.length() <= rule.getParam();
+            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches();
+            case VKN -> VKN_PATTERN.matcher(text).matches() && isValidVknChecksum(text);
+            case PHONE_TR -> PHONE_TR_PATTERN.matcher(text.replaceAll("\\s+", " ")).matches();
+            case EMAIL -> EMAIL_PATTERN.matcher(text).matches();
+            case SIGNATURE_INK, STAMP_INK -> true;
         };
     }
 
@@ -270,25 +176,20 @@ public class ValidationService {
         }
     }
 
-    private boolean isGibberish(String text) {
-        String letters = text.replaceAll("[^\\p{L}]", "");
-        if (letters.length() < 3) return false;
-        if (CONSONANT_RUN_PATTERN.matcher(letters).find()) return true;
-        long vowelCount = letters.toLowerCase(Locale.forLanguageTag("tr-TR"))
-                .chars()
-                .filter(c -> "aeıioöuüAEIİOÖUÜ".indexOf(c) >= 0)
-                .count();
-        double vowelRatio = (double) vowelCount / letters.length();
-        return vowelRatio < 0.15;
-    }
-
-    private String maskValue(String label, String text) {
-        return switch (label.toLowerCase(Locale.ROOT)) {
-            case "id_number", "tc_no", "vkn" -> maskKeepLast(text, 2);
-            case "phone", "phone_number" -> maskKeepLast(text, 2);
-            case "name" -> maskName(text);
-            default -> maskKeepLast(text, 0);
-        };
+    private String maskValue(TemplateSegment segment, String text) {
+        boolean hasIdLikeRule = segment.getRules().stream().anyMatch(r ->
+                r.getRuleType() == SegmentRuleType.TC_KIMLIK_NO
+                        || r.getRuleType() == SegmentRuleType.VKN
+                        || r.getRuleType() == SegmentRuleType.PHONE_TR);
+        if (hasIdLikeRule) {
+            return maskKeepLast(text, 2);
+        }
+        boolean hasLettersOnlyRule = segment.getRules().stream()
+                .anyMatch(r -> r.getRuleType() == SegmentRuleType.LETTERS_ONLY);
+        if (hasLettersOnlyRule) {
+            return maskName(text);
+        }
+        return maskKeepLast(text, 0);
     }
 
     private String maskKeepLast(String text, int keepLast) {
@@ -307,5 +208,14 @@ public class ValidationService {
             sb.append(part.isEmpty() ? "" : part.charAt(0)).append("*".repeat(Math.max(0, part.length() - 1)));
         }
         return sb.toString();
+    }
+
+    private String toJson(List<Map<String, Object>> segmentEntries) {
+        try {
+            return jsonMapper.writeValueAsString(segmentEntries);
+        } catch (JacksonException e) {
+            log.warn("Segment sonuclari serialize edilemedi, null olarak donuluyor", e);
+            return null;
+        }
     }
 }

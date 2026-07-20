@@ -1,13 +1,15 @@
 package com.validdoc.service;
 
+import com.validdoc.dto.internal.SegmentReading;
 import com.validdoc.dto.internal.ValidationResult;
-import com.validdoc.dto.ocr.OcrDocumentResult;
 import com.validdoc.exception.OpenCVException;
+import com.validdoc.exception.PageOutOfBoundsException;
 import com.validdoc.exception.PdfRasterizationException;
 import com.validdoc.exception.TemplateDefinitionException;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.Template;
+import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.repository.AuditLogRepository;
@@ -26,12 +28,17 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class DocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
     private static final String PDF_CONTENT_TYPE = "application/pdf";
+    private static final int SINGLE_IMAGE_PAGE_NUMBER = 1;
     private static final String ENGINE_ERROR_AUDIT_ACTION = "ENGINE_ERROR_PENDING_REVIEW";
 
     private final DocumentRepository documentRepository;
@@ -40,7 +47,6 @@ public class DocumentService {
     private final PdfRasterService pdfRasterService;
     private final OcrService ocrService;
     private final ValidationService validationService;
-    private final NotificationService notificationService;
     private final ValidationSettingsService validationSettingsService;
 
     public DocumentService(DocumentRepository documentRepository,
@@ -49,7 +55,6 @@ public class DocumentService {
                            PdfRasterService pdfRasterService,
                            OcrService ocrService,
                            ValidationService validationService,
-                           NotificationService notificationService,
                            ValidationSettingsService validationSettingsService) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
@@ -57,7 +62,6 @@ public class DocumentService {
         this.pdfRasterService = pdfRasterService;
         this.ocrService = ocrService;
         this.validationService = validationService;
-        this.notificationService = notificationService;
         this.validationSettingsService = validationSettingsService;
     }
 
@@ -69,22 +73,26 @@ public class DocumentService {
 
         try {
             Template template = resolveTemplate(templateId);
+            if (template == null) {
+                throw new TemplateDefinitionException("Template zorunludur, template-free mod artik desteklenmiyor", null);
+            }
             DocumentLanguage language = document.getLanguage() != null ? document.getLanguage() : DocumentLanguage.TUR;
 
-            BufferedImage image = PDF_CONTENT_TYPE.equals(contentType)
-                    ? pdfRasterService.renderFirstPage(new ByteArrayInputStream(fileBytes))
-                    : ImageIO.read(new ByteArrayInputStream(fileBytes));
+            Set<Integer> requiredPages = template.getSegments().stream()
+                    .map(TemplateSegment::getPage)
+                    .collect(Collectors.toSet());
 
-            if (image == null) {
-                throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
-            }
+            Map<Integer, BufferedImage> pages = PDF_CONTENT_TYPE.equals(contentType)
+                    ? pdfRasterService.renderPages(new ByteArrayInputStream(fileBytes), requiredPages)
+                    : renderSingleImagePage(fileBytes, requiredPages);
 
-            OcrDocumentResult ocrResult = ocrService.process(image, template, language);
-            ValidationResult result = validationService.validate(ocrResult, template);
+            List<SegmentReading> readings = ocrService.process(pages, template, language);
+            ValidationResult result = validationService.validate(readings);
 
             applyValidationResult(document, result);
             finalizeDocument(document, "AUTO_" + document.getStatus().name());
-        } catch (PdfRasterizationException | TesseractException | OpenCVException | TemplateDefinitionException e) {
+        } catch (PdfRasterizationException | PageOutOfBoundsException | TesseractException
+                 | OpenCVException | TemplateDefinitionException e) {
             log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
@@ -97,11 +105,20 @@ public class DocumentService {
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
         }
+    }
 
-        if (document.getStatus() == DocumentStatus.REJECTED_EMPTY
-                || document.getStatus() == DocumentStatus.REJECTED_INVALID) {
-            notificationService.notifyRejection(document);
+    private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
+        if (image == null) {
+            throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
         }
+        for (Integer requiredPage : requiredPages) {
+            if (requiredPage == null || requiredPage != SINGLE_IMAGE_PAGE_NUMBER) {
+                throw new PageOutOfBoundsException(
+                        "Tek sayfalik resim yuklendi, ancak template " + requiredPage + ". sayfayi referans veriyor", null);
+            }
+        }
+        return Map.of(SINGLE_IMAGE_PAGE_NUMBER, image);
     }
 
     private Template resolveTemplate(Long templateId) {
@@ -113,10 +130,7 @@ public class DocumentService {
     }
 
     private void applyValidationResult(DocumentMetadata document, ValidationResult result) {
-        document.setValidationMode(result.getValidationMode());
-        document.setConfidenceScore(result.getConfidenceScore());
-        document.setValidationErrorLogs(result.getValidationErrorLogs());
-        document.setExtractedMaskedData(result.getExtractedMaskedData());
+        document.setSegmentResults(result.getSegmentResultsJson());
         document.setStatus(result.getStatus());
         document.setProcessedAt(LocalDateTime.now());
 
@@ -127,7 +141,6 @@ public class DocumentService {
 
     private void applyEngineFailure(DocumentMetadata document) {
         document.setStatus(DocumentStatus.PENDING_REVIEW);
-        document.setConfidenceScore(0.0);
         document.setProcessedAt(LocalDateTime.now());
     }
 

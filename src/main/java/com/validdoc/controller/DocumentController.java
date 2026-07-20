@@ -15,7 +15,6 @@ import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.service.DocumentService;
-import com.validdoc.service.NotificationService;
 import com.validdoc.service.ValidationSettingsService;
 import jakarta.validation.Valid;
 import org.springframework.context.MessageSource;
@@ -43,7 +42,6 @@ public class DocumentController {
     private final AuditLogRepository auditLogRepository;
     private final DocumentService documentService;
     private final ValidationSettingsService validationSettingsService;
-    private final NotificationService notificationService;
     private final MessageSource messageSource;
 
     public DocumentController(DocumentRepository documentRepository,
@@ -52,7 +50,6 @@ public class DocumentController {
                               AuditLogRepository auditLogRepository,
                               DocumentService documentService,
                               ValidationSettingsService validationSettingsService,
-                              NotificationService notificationService,
                               MessageSource messageSource) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
@@ -60,7 +57,6 @@ public class DocumentController {
         this.auditLogRepository = auditLogRepository;
         this.documentService = documentService;
         this.validationSettingsService = validationSettingsService;
-        this.notificationService = notificationService;
         this.messageSource = messageSource;
     }
 
@@ -70,20 +66,22 @@ public class DocumentController {
                                                       @RequestParam(value = "templateId", required = false) Long templateId,
                                                       @RequestParam(value = "lang", required = false) String lang,
                                                       Authentication authentication) throws IOException {
+        if (templateId == null) {
+            throw new ApiException(ErrorCode.TEMPLATE_ID_REQUIRED);
+        }
+
         User uploader = userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
+
+        Template template = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(templateId)));
 
         DocumentMetadata document = new DocumentMetadata();
         document.setFileName(file.getOriginalFilename());
         document.setUploadedBy(uploader);
         document.setStatus(DocumentStatus.PROCESSING);
         document.setLanguage(DocumentLanguage.fromParam(lang));
-
-        if (templateId != null) {
-            Template template = templateRepository.findById(templateId)
-                    .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(templateId)));
-            document.setTemplate(template);
-        }
+        document.setTemplate(template);
 
         document = documentRepository.save(document);
         auditLogRepository.save(new AuditLog(document.getId(), "DOCUMENT_UPLOADED", uploader.getUsername()));
@@ -142,10 +140,6 @@ public class DocumentController {
 
         auditLogRepository.save(new AuditLog(document.getId(), "MANUAL_" + target.name(), operator.getUsername()));
 
-        if (target == DocumentStatus.REJECTED_EMPTY || target == DocumentStatus.REJECTED_INVALID) {
-            notificationService.notifyRejection(document);
-        }
-
         String message = messageSource.getMessage("message.document.status_updated", null, locale);
         return ResponseEntity.ok(Map.of("message", message));
     }
@@ -155,12 +149,9 @@ public class DocumentController {
         return new DocumentSummaryResponse(
                 document.getId(),
                 document.getStatus(),
-                document.getValidationMode(),
                 templateId,
                 document.getLanguage(),
-                document.getConfidenceScore(),
-                document.getValidationErrorLogs(),
-                document.getExtractedMaskedData(),
+                document.getSegmentResults(),
                 document.getUploadedAt(),
                 document.getProcessedAt()
         );

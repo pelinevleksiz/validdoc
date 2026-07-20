@@ -2,7 +2,6 @@ package com.validdoc.model;
 
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.DocumentLanguage;
-import com.validdoc.model.enums.ValidationMode;
 import com.validdoc.security.MaskedDataEncryptionConverter;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -23,25 +22,16 @@ public class DocumentMetadata {
     private DocumentStatus status = DocumentStatus.PROCESSING;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private ValidationMode validationMode;
-
-    @Enumerated(EnumType.STRING)
     @Column(length = 10)
     private DocumentLanguage language = DocumentLanguage.TUR;
 
     @ManyToOne
-    @JoinColumn(name = "template_id")
+    @JoinColumn(name = "template_id", nullable = false)
     private Template template;
-
-    private Double confidenceScore;
-
-    @Column(columnDefinition = "TEXT")
-    private String validationErrorLogs;
 
     @Convert(converter = MaskedDataEncryptionConverter.class)
     @Column(columnDefinition = "TEXT")
-    private String extractedMaskedData;
+    private String segmentResults;
 
     @ManyToOne
     @JoinColumn(name = "uploaded_by", nullable = false)
@@ -69,23 +59,14 @@ public class DocumentMetadata {
     public DocumentStatus getStatus() { return status; }
     public void setStatus(DocumentStatus status) { this.status = status; }
 
-    public ValidationMode getValidationMode() { return validationMode; }
-    public void setValidationMode(ValidationMode validationMode) { this.validationMode = validationMode; }
-
     public DocumentLanguage getLanguage() { return language; }
     public void setLanguage(DocumentLanguage language) { this.language = language; }
 
     public Template getTemplate() { return template; }
     public void setTemplate(Template template) { this.template = template; }
 
-    public Double getConfidenceScore() { return confidenceScore; }
-    public void setConfidenceScore(Double confidenceScore) { this.confidenceScore = confidenceScore; }
-
-    public String getValidationErrorLogs() { return validationErrorLogs; }
-    public void setValidationErrorLogs(String validationErrorLogs) { this.validationErrorLogs = validationErrorLogs; }
-
-    public String getExtractedMaskedData() { return extractedMaskedData; }
-    public void setExtractedMaskedData(String extractedMaskedData) { this.extractedMaskedData = extractedMaskedData; }
+    public String getSegmentResults() { return segmentResults; }
+    public void setSegmentResults(String segmentResults) { this.segmentResults = segmentResults; }
 
     public User getUploadedBy() { return uploadedBy; }
     public void setUploadedBy(User uploadedBy) { this.uploadedBy = uploadedBy; }
