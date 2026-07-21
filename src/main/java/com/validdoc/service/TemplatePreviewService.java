@@ -7,11 +7,12 @@ import com.validdoc.exception.ErrorCode;
 import com.validdoc.exception.PageOutOfBoundsException;
 import com.validdoc.exception.PdfRasterizationException;
 import net.sourceforge.tess4j.Tesseract;
-import net.sourceforge.tess4j.TesseractException;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.validdoc.config.TesseractFactory;
@@ -31,6 +32,7 @@ import java.util.stream.Collectors;
 @Service
 public class TemplatePreviewService {
 
+    private static final Logger log = LoggerFactory.getLogger(TemplatePreviewService.class);
     private static final String PDF_CONTENT_TYPE = "application/pdf";
     private static final int SINGLE_IMAGE_PAGE_NUMBER = 1;
 
@@ -68,15 +70,20 @@ public class TemplatePreviewService {
             BufferedImage region = safeCrop(page, (int) (double) segment.getX(), (int) (double) segment.getY(),
                     (int) (double) segment.getW(), (int) (double) segment.getH());
 
-            try {
-                String text = tesseract.doOCR(region).trim();
-                double density = computeInkDensity(region);
-                results.add(new TemplatePreviewSegmentResponse(segment.getLabel(), segment.getPage(), text, density));
-            } catch (TesseractException e) {
-                throw new ApiException(ErrorCode.PREVIEW_FAILED, e.getMessage());
-            }
+            String text = tryOcr(tesseract, region, segment.getLabel());
+            double density = computeInkDensity(region);
+            results.add(new TemplatePreviewSegmentResponse(segment.getLabel(), segment.getPage(), text, density));
         }
         return results;
+    }
+
+    private String tryOcr(Tesseract tesseract, BufferedImage region, String segmentLabel) {
+        try {
+            return tesseract.doOCR(region).trim();
+        } catch (Throwable t) {
+            log.warn("Onizlemede OCR basarisiz oldu, segment={}, ink yogunlugu yine de donuluyor", segmentLabel, t);
+            return null;
+        }
     }
 
     private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {

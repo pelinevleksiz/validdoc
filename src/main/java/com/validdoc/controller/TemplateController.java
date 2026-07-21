@@ -30,6 +30,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.core.JacksonException;
@@ -84,6 +85,7 @@ public class TemplateController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+    @Transactional(readOnly = true)
     public ResponseEntity<TemplateDetailResponse> getById(@PathVariable Long id) {
         Template template = templateRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(id)));

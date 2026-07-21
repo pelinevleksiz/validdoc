@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import com.validdoc.config.TesseractFactory;
 import com.validdoc.dto.internal.SegmentReading;
+import com.validdoc.exception.OcrEngineException;
 import com.validdoc.exception.TemplateDefinitionException;
 import com.validdoc.exception.OpenCVException;
 import com.validdoc.model.Template;
@@ -62,11 +63,19 @@ public class OcrService {
                 double density = computeInkDensity(region);
                 readings.add(new SegmentReading(segment, null, density));
             } else {
-                String text = tesseract.doOCR(region).trim();
+                String text = runOcr(tesseract, region, segment.getLabel());
                 readings.add(new SegmentReading(segment, text, null));
             }
         }
         return readings;
+    }
+
+    private String runOcr(Tesseract tesseract, BufferedImage region, String segmentLabel) {
+        try {
+            return tesseract.doOCR(region).trim();
+        } catch (Throwable t) {
+            throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segmentLabel, t);
+        }
     }
 
     private boolean isInkSegment(TemplateSegment segment) {

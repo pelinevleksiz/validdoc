@@ -2,6 +2,7 @@ package com.validdoc.service;
 
 import com.validdoc.dto.internal.SegmentReading;
 import com.validdoc.dto.internal.ValidationResult;
+import com.validdoc.exception.OcrEngineException;
 import com.validdoc.exception.OpenCVException;
 import com.validdoc.exception.PageOutOfBoundsException;
 import com.validdoc.exception.PdfRasterizationException;
@@ -92,7 +93,7 @@ public class DocumentService {
             applyValidationResult(document, result);
             finalizeDocument(document, "AUTO_" + document.getStatus().name());
         } catch (PdfRasterizationException | PageOutOfBoundsException | TesseractException
-                 | OpenCVException | TemplateDefinitionException e) {
+                 | OcrEngineException | OpenCVException | TemplateDefinitionException e) {
             log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
