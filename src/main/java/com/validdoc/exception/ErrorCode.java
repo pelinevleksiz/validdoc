@@ -21,6 +21,7 @@ public enum ErrorCode {
     INVALID_RULE_PARAM(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_param"),
     TEMPLATE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "error.document.template_id_required"),
     PREVIEW_FAILED(HttpStatus.BAD_REQUEST, "error.template.preview_failed"),
+    MALFORMED_REQUEST_BODY(HttpStatus.BAD_REQUEST, "error.request.malformed_body"),
     INTERNAL_UNEXPECTED(HttpStatus.INTERNAL_SERVER_ERROR, "error.internal.unexpected");
 
     private final HttpStatus status;

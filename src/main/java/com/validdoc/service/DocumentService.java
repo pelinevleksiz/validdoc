@@ -24,7 +24,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -49,6 +48,7 @@ public class DocumentService {
     private final OcrService ocrService;
     private final ValidationService validationService;
     private final ValidationSettingsService validationSettingsService;
+    private final ImageNormalizationService imageNormalizationService;
 
     public DocumentService(DocumentRepository documentRepository,
                            TemplateRepository templateRepository,
@@ -56,7 +56,8 @@ public class DocumentService {
                            PdfRasterService pdfRasterService,
                            OcrService ocrService,
                            ValidationService validationService,
-                           ValidationSettingsService validationSettingsService) {
+                           ValidationSettingsService validationSettingsService,
+                           ImageNormalizationService imageNormalizationService) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.auditLogRepository = auditLogRepository;
@@ -64,6 +65,7 @@ public class DocumentService {
         this.ocrService = ocrService;
         this.validationService = validationService;
         this.validationSettingsService = validationSettingsService;
+        this.imageNormalizationService = imageNormalizationService;
     }
 
     @Async
@@ -109,10 +111,7 @@ public class DocumentService {
     }
 
     private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
-        if (image == null) {
-            throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
-        }
+        BufferedImage image = imageNormalizationService.normalizeToA4Canvas(fileBytes);
         for (Integer requiredPage : requiredPages) {
             if (requiredPage == null || requiredPage != SINGLE_IMAGE_PAGE_NUMBER) {
                 throw new PageOutOfBoundsException(

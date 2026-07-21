@@ -38,10 +38,10 @@ public class ValidationService {
     private static final Pattern DIGITS_ONLY_PATTERN = Pattern.compile("^\\d+$");
     private static final Pattern ALPHANUMERIC_PATTERN = Pattern.compile("^[\\p{L}\\d]+$");
     private static final DateTimeFormatter DATE_FORMATTER =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("tr-TR"))
+            DateTimeFormatter.ofPattern("dd/MM/uuuu", Locale.forLanguageTag("tr-TR"))
                     .withResolverStyle(ResolverStyle.STRICT);
     private static final DateTimeFormatter DATE_FORMATTER_DOTTED =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("tr-TR"))
+            DateTimeFormatter.ofPattern("dd.MM.uuuu", Locale.forLanguageTag("tr-TR"))
                     .withResolverStyle(ResolverStyle.STRICT);
 
     private final ValidationSettingsService settings;
@@ -123,10 +123,10 @@ public class ValidationService {
             case LETTERS_ONLY -> LETTERS_ONLY_PATTERN.matcher(text).matches();
             case DIGITS_ONLY -> DIGITS_ONLY_PATTERN.matcher(text).matches();
             case ALPHANUMERIC -> ALPHANUMERIC_PATTERN.matcher(text).matches();
-            case DATE -> isValidDate(text) && !isDocumentDateInFuture(text);
+            case DATE -> isValidDate(text);
             case MIN_LENGTH -> rule.getParam() != null && text.length() >= rule.getParam();
             case MAX_LENGTH -> rule.getParam() != null && text.length() <= rule.getParam();
-            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches();
+            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches() && isValidTcKimlikChecksum(text);
             case VKN -> VKN_PATTERN.matcher(text).matches() && isValidVknChecksum(text);
             case PHONE_TR -> PHONE_TR_PATTERN.matcher(text.replaceAll("\\s+", " ")).matches();
             case EMAIL -> EMAIL_PATTERN.matcher(text).matches();
@@ -138,20 +138,41 @@ public class ValidationService {
         return parseDate(text) != null;
     }
 
-    private boolean isDocumentDateInFuture(String text) {
-        LocalDate parsed = parseDate(text);
-        return parsed != null && parsed.isAfter(LocalDate.now());
-    }
-
     private LocalDate parseDate(String text) {
         try {
             return LocalDate.parse(text, DATE_FORMATTER);
-        } catch (DateTimeParseException e) {
+        } catch (DateTimeParseException slashFailure) {
             try {
                 return LocalDate.parse(text, DATE_FORMATTER_DOTTED);
-            } catch (DateTimeParseException e2) {
+            } catch (DateTimeParseException dottedFailure) {
+                log.warn("Tarih ayristirilamadi, text=[{}], slash-hata=[{}], dotted-hata=[{}]",
+                        text, slashFailure.getMessage(), dottedFailure.getMessage());
                 return null;
             }
+        }
+    }
+
+    private boolean isValidTcKimlikChecksum(String tc) {
+        if (tc == null || tc.length() != 11 || tc.charAt(0) == '0') return false;
+        try {
+            int[] d = new int[11];
+            for (int i = 0; i < 11; i++) {
+                d[i] = Character.getNumericValue(tc.charAt(i));
+            }
+            int oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
+            int evenSum = d[1] + d[3] + d[5] + d[7];
+            int digit10 = ((oddSum * 7) - evenSum) % 10;
+            if (digit10 < 0) digit10 += 10;
+            if (digit10 != d[9]) return false;
+
+            int sumFirst10 = 0;
+            for (int i = 0; i < 10; i++) {
+                sumFirst10 += d[i];
+            }
+            int digit11 = sumFirst10 % 10;
+            return digit11 == d[10];
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -1,5 +1,6 @@
 package com.validdoc;
 
+import com.validdoc.config.DocumentGeometry;
 import com.validdoc.model.User;
 import com.validdoc.model.enums.UserRole;
 import com.validdoc.repository.UserRepository;
@@ -87,10 +88,11 @@ class ApiIntegrationTest {
     }
 
     private byte[] generateInkImage(boolean withInk) throws IOException {
-        BufferedImage image = new BufferedImage(150, 150, BufferedImage.TYPE_INT_RGB);
+        BufferedImage image = new BufferedImage(
+                DocumentGeometry.A4_WIDTH_PX_INT, DocumentGeometry.A4_HEIGHT_PX_INT, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = image.createGraphics();
         g.setColor(Color.WHITE);
-        g.fillRect(0, 0, 150, 150);
+        g.fillRect(0, 0, DocumentGeometry.A4_WIDTH_PX_INT, DocumentGeometry.A4_HEIGHT_PX_INT);
         if (withInk) {
             g.setColor(Color.BLACK);
             g.fillRect(10, 10, 80, 80);

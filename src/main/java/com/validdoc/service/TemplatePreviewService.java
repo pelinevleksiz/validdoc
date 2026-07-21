@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import com.validdoc.config.TesseractFactory;
 import com.validdoc.model.enums.DocumentLanguage;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.ByteArrayInputStream;
@@ -38,10 +37,14 @@ public class TemplatePreviewService {
 
     private final PdfRasterService pdfRasterService;
     private final ThreadLocal<Tesseract> tesseractHolder;
+    private final ImageNormalizationService imageNormalizationService;
 
-    public TemplatePreviewService(PdfRasterService pdfRasterService, TesseractFactory tesseractFactory) {
+    public TemplatePreviewService(PdfRasterService pdfRasterService,
+                                  TesseractFactory tesseractFactory,
+                                  ImageNormalizationService imageNormalizationService) {
         this.pdfRasterService = pdfRasterService;
         this.tesseractHolder = ThreadLocal.withInitial(tesseractFactory::create);
+        this.imageNormalizationService = imageNormalizationService;
     }
 
     public List<TemplatePreviewSegmentResponse> preview(byte[] fileBytes, String contentType,
@@ -87,10 +90,7 @@ public class TemplatePreviewService {
     }
 
     private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
-        if (image == null) {
-            throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
-        }
+        BufferedImage image = imageNormalizationService.normalizeToA4Canvas(fileBytes);
         for (Integer requiredPage : requiredPages) {
             if (requiredPage == null || requiredPage != SINGLE_IMAGE_PAGE_NUMBER) {
                 throw new PageOutOfBoundsException(

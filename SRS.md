@@ -19,7 +19,7 @@
 
 ### 1.3 Template-Based Segmentation & Rule-Based Validation
 - An admin defines **page- and coordinate-based segments** on a template; each segment is assigned one or more rules from the system's fixed catalogs.
-- The rule catalog has two groups: *structural* (letters/digits/length/date/signature-stamp) and *validated format* (Turkish ID number, VKN — checksum-validated, phone, email).
+- The rule catalog has two groups: *structural* (letters/digits/length/date/signature-stamp) and *validated format* (Turkish ID number and VKN, both checksum-validated; phone; email).
 - Each segment is evaluated as **filled-valid / filled-invalid / empty**; the result is reported per segment, not as a single aggregate score.
 - **Templates cannot be modified once saved**; a correction is made by creating a new template.
 - An admin can **preview** segment coordinates against a sample document before saving.
@@ -39,7 +39,7 @@
 ## 2. Technical & Architectural Requirements
 
 ### 2.1 Backend Architecture
-The application is built with Spring Boot 4.x and Java 21; it is packaged as a **stateless** container and is horizontally scalable.
+The application is built with Spring Boot 4.x and Java 21; it is packaged as a **stateless** container and is horizontally scalable. Login and upload rate limiters are held in-memory per instance, so they are not shared across replicas in a multi-instance deployment.
 
 ### 2.2 OCR Engine Integration
 Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are cropped and read directly from the page image.
@@ -57,6 +57,6 @@ Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are croppe
 - Every user action is recorded in an immutable **audit log**.
 
 ### 3.2 Performance & Scalability
-- The application is designed to be replicated as a stateless container.
+- The application is designed to be replicated as a stateless container; note that the in-memory rate limiters (§2.1) are the one exception to this and would need a shared store (e.g. Redis) before running multiple replicas behind a load balancer.
 - End-to-end processing of a standard single-page document completes in **under 3 seconds**; the upload request itself returns immediately, with processing carried out asynchronously in the background.
 - An authentication-free **health-check** endpoint is provided.

@@ -12,4 +12,7 @@ public final class DocumentGeometry {
 
     public static final double A4_WIDTH_PX = A4_WIDTH_MM / MM_PER_INCH * RENDER_DPI;
     public static final double A4_HEIGHT_PX = A4_HEIGHT_MM / MM_PER_INCH * RENDER_DPI;
+
+    public static final int A4_WIDTH_PX_INT = (int) Math.round(A4_WIDTH_PX);
+    public static final int A4_HEIGHT_PX_INT = (int) Math.round(A4_HEIGHT_PX);
 }
