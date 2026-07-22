@@ -204,12 +204,17 @@ public class DocumentController {
 
     private DocumentSummaryResponse toSummary(DocumentMetadata document) {
         Long templateId = document.getTemplate() != null ? document.getTemplate().getId() : null;
+        String uploadedByUsername = document.getUploadedBy() != null ? document.getUploadedBy().getUsername() : null;
+        String operatorUsername = document.getOperator() != null ? document.getOperator().getUsername() : null;
         return new DocumentSummaryResponse(
                 document.getId(),
+                document.getFileName(),
                 document.getStatus(),
                 templateId,
                 document.getLanguage(),
                 document.getSegmentResults(),
+                uploadedByUsername,
+                operatorUsername,
                 document.getUploadedAt(),
                 document.getProcessedAt()
         );

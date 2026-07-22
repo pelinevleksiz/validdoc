@@ -15,6 +15,7 @@ import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.SegmentImage;
 import com.validdoc.model.Template;
 import com.validdoc.model.TemplateSegment;
+import com.validdoc.model.User;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.SegmentOutcome;
@@ -22,6 +23,7 @@ import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.SegmentImageRepository;
 import com.validdoc.repository.TemplateRepository;
+import com.validdoc.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import net.sourceforge.tess4j.TesseractException;
 import org.slf4j.Logger;
@@ -57,6 +59,7 @@ public class DocumentService {
     private final TemplateRepository templateRepository;
     private final AuditLogRepository auditLogRepository;
     private final SegmentImageRepository segmentImageRepository;
+    private final UserRepository userRepository;
     private final PdfRasterService pdfRasterService;
     private final OcrService ocrService;
     private final ValidationService validationService;
@@ -67,6 +70,7 @@ public class DocumentService {
                            TemplateRepository templateRepository,
                            AuditLogRepository auditLogRepository,
                            SegmentImageRepository segmentImageRepository,
+                           UserRepository userRepository,
                            PdfRasterService pdfRasterService,
                            OcrService ocrService,
                            ValidationService validationService,
@@ -76,6 +80,7 @@ public class DocumentService {
         this.templateRepository = templateRepository;
         this.auditLogRepository = auditLogRepository;
         this.segmentImageRepository = segmentImageRepository;
+        this.userRepository = userRepository;
         this.pdfRasterService = pdfRasterService;
         this.ocrService = ocrService;
         this.validationService = validationService;
@@ -165,6 +170,7 @@ public class DocumentService {
         if (!anyStillPending) {
             DocumentStatus recomputed = validationService.deriveStatus(entries);
             document.setStatus(recomputed);
+            document.setOperator(userRepository.findByUsername(resolvedBy).orElse(null));
             document.setProcessedAt(LocalDateTime.now());
             document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
         }
