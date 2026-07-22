@@ -7,12 +7,14 @@ import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
+import com.validdoc.model.SegmentImage;
 import com.validdoc.model.Template;
 import com.validdoc.model.User;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
+import com.validdoc.repository.SegmentImageRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.security.UploadRateLimiter;
@@ -24,6 +26,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -32,6 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +49,7 @@ public class DocumentController {
     private final TemplateRepository templateRepository;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
+    private final SegmentImageRepository segmentImageRepository;
     private final DocumentService documentService;
     private final ValidationSettingsService validationSettingsService;
     private final MessageSource messageSource;
@@ -54,6 +59,7 @@ public class DocumentController {
                               TemplateRepository templateRepository,
                               UserRepository userRepository,
                               AuditLogRepository auditLogRepository,
+                              SegmentImageRepository segmentImageRepository,
                               DocumentService documentService,
                               ValidationSettingsService validationSettingsService,
                               MessageSource messageSource,
@@ -62,6 +68,7 @@ public class DocumentController {
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
+        this.segmentImageRepository = segmentImageRepository;
         this.documentService = documentService;
         this.validationSettingsService = validationSettingsService;
         this.messageSource = messageSource;
@@ -128,6 +135,20 @@ public class DocumentController {
         DocumentMetadata document = documentRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
         return ResponseEntity.ok(toSummary(document));
+    }
+
+    @GetMapping("/{id}/segments/{segmentId}/image")
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+    public ResponseEntity<byte[]> getSegmentImage(@PathVariable Long id, @PathVariable Long segmentId) {
+        if (!documentRepository.existsById(id)) {
+            throw new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id));
+        }
+
+        SegmentImage image = segmentImageRepository.findByDocumentIdAndSegmentId(id, segmentId)
+                .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_IMAGE_NOT_FOUND, String.valueOf(segmentId)));
+
+        byte[] pngBytes = Base64.getDecoder().decode(image.getImageDataBase64());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(pngBytes);
     }
 
     @GetMapping("/queue")

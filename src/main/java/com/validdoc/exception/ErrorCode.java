@@ -17,6 +17,7 @@ public enum ErrorCode {
     USER_HAS_LINKED_DOCUMENTS(HttpStatus.CONFLICT, "error.user.has_linked_documents"),
     TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.template.not_found"),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "error.document.not_found"),
+    SEGMENT_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.segment.image_not_found"),
     INVALID_DOCUMENT_STATUS(HttpStatus.BAD_REQUEST, "error.document.invalid_status"),
     INVALID_SEGMENT_COORDINATES(HttpStatus.BAD_REQUEST, "error.template.invalid_segment_coordinates"),
     INVALID_SEGMENT_RULE_COMBINATION(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_combination"),
