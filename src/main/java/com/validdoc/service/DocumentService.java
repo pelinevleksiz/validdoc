@@ -139,6 +139,10 @@ public class DocumentService {
             throw new ApiException(ErrorCode.DOCUMENT_NOT_PENDING_REVIEW, String.valueOf(documentId));
         }
 
+        if (document.getSegmentResults() == null) {
+            throw new ApiException(ErrorCode.DOCUMENT_NOT_PENDING_REVIEW, String.valueOf(documentId));
+        }
+
         List<SegmentResultEntry> entries = parseSegmentResults(document.getSegmentResults());
 
         SegmentResultEntry target = entries.stream()
