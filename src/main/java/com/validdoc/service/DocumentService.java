@@ -3,6 +3,8 @@ package com.validdoc.service;
 import com.validdoc.dto.internal.SegmentReading;
 import com.validdoc.dto.internal.SegmentResultEntry;
 import com.validdoc.dto.internal.ValidationResult;
+import com.validdoc.exception.ApiException;
+import com.validdoc.exception.ErrorCode;
 import com.validdoc.exception.OcrEngineException;
 import com.validdoc.exception.OpenCVException;
 import com.validdoc.exception.PageOutOfBoundsException;
@@ -27,12 +29,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +61,7 @@ public class DocumentService {
     private final OcrService ocrService;
     private final ValidationService validationService;
     private final ValidationSettingsService validationSettingsService;
+    private final JsonMapper jsonMapper;
 
     public DocumentService(DocumentRepository documentRepository,
                            TemplateRepository templateRepository,
@@ -63,7 +70,8 @@ public class DocumentService {
                            PdfRasterService pdfRasterService,
                            OcrService ocrService,
                            ValidationService validationService,
-                           ValidationSettingsService validationSettingsService) {
+                           ValidationSettingsService validationSettingsService,
+                           JsonMapper jsonMapper) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.auditLogRepository = auditLogRepository;
@@ -72,6 +80,7 @@ public class DocumentService {
         this.ocrService = ocrService;
         this.validationService = validationService;
         this.validationSettingsService = validationSettingsService;
+        this.jsonMapper = jsonMapper;
     }
 
     @Async
@@ -114,6 +123,69 @@ public class DocumentService {
             log.error("Beklenmeyen hata, documentId={}", documentId, e);
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
+        }
+    }
+
+    @Transactional
+    public DocumentMetadata resolveSegment(Long documentId, Long segmentId, SegmentOutcome finalOutcome, String resolvedBy) {
+        if (finalOutcome == SegmentOutcome.PENDING_REVIEW) {
+            throw new ApiException(ErrorCode.INVALID_SEGMENT_RESOLUTION_OUTCOME);
+        }
+
+        DocumentMetadata document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(documentId)));
+
+        if (document.getStatus() != DocumentStatus.PENDING_REVIEW) {
+            throw new ApiException(ErrorCode.DOCUMENT_NOT_PENDING_REVIEW, String.valueOf(documentId));
+        }
+
+        List<SegmentResultEntry> entries = parseSegmentResults(document.getSegmentResults());
+
+        SegmentResultEntry target = entries.stream()
+                .filter(e -> segmentId.equals(e.getSegmentId()))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_NOT_FOUND, String.valueOf(segmentId)));
+
+        if (target.getOutcome() != SegmentOutcome.PENDING_REVIEW) {
+            throw new ApiException(ErrorCode.SEGMENT_ALREADY_RESOLVED, String.valueOf(segmentId));
+        }
+
+        target.setOutcome(finalOutcome);
+        target.setManuallyResolved(true);
+        target.setResolvedBy(resolvedBy);
+        target.setResolvedAt(LocalDateTime.now());
+
+        segmentImageRepository.deleteByDocumentIdAndSegmentId(documentId, segmentId);
+
+        boolean anyStillPending = entries.stream().anyMatch(e -> e.getOutcome() == SegmentOutcome.PENDING_REVIEW);
+        if (!anyStillPending) {
+            DocumentStatus recomputed = validationService.deriveStatus(entries);
+            document.setStatus(recomputed);
+            document.setProcessedAt(LocalDateTime.now());
+            document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
+        }
+
+        document.setSegmentResults(serializeEntries(entries));
+        documentRepository.save(document);
+        auditLogRepository.save(new AuditLog(documentId, "SEGMENT_RESOLVED_" + finalOutcome.name(), resolvedBy));
+
+        return document;
+    }
+
+    private List<SegmentResultEntry> parseSegmentResults(String json) {
+        try {
+            SegmentResultEntry[] array = jsonMapper.readValue(json, SegmentResultEntry[].class);
+            return new ArrayList<>(Arrays.asList(array));
+        } catch (JacksonException e) {
+            throw new IllegalStateException("segmentResults JSON okunamadi", e);
+        }
+    }
+
+    private String serializeEntries(List<SegmentResultEntry> entries) {
+        try {
+            return jsonMapper.writeValueAsString(entries);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("segmentResults JSON yazilamadi", e);
         }
     }
 

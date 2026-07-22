@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.validdoc.dto.request.SegmentResolveRequest;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -149,6 +150,16 @@ public class DocumentController {
 
         byte[] pngBytes = Base64.getDecoder().decode(image.getImageDataBase64());
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(pngBytes);
+    }
+
+    @PostMapping("/{id}/segments/{segmentId}/resolve")
+    @PreAuthorize("hasRole('OPERATOR')")
+    public ResponseEntity<DocumentSummaryResponse> resolveSegment(@PathVariable Long id,
+                                                                  @PathVariable Long segmentId,
+                                                                  @Valid @RequestBody SegmentResolveRequest request,
+                                                                  Authentication authentication) {
+        DocumentMetadata document = documentService.resolveSegment(id, segmentId, request.getOutcome(), authentication.getName());
+        return ResponseEntity.ok(toSummary(document));
     }
 
     @GetMapping("/queue")
