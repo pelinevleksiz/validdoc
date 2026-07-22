@@ -68,7 +68,9 @@ public class ValidationService {
             } else {
                 String text = reading.getExtractedText() == null ? "" : reading.getExtractedText().trim();
                 if (text.isEmpty()) {
-                    entry.setOutcome(SegmentOutcome.EMPTY);
+                    boolean hasUndetectedContent = reading.getPixelDensity() != null
+                            && reading.getPixelDensity() >= settings.getInkDensityThreshold();
+                    entry.setOutcome(hasUndetectedContent ? SegmentOutcome.PENDING_REVIEW : SegmentOutcome.EMPTY);
                 } else {
                     List<String> failedRules = evaluateTextRules(segment, text);
                     boolean lowConfidence = reading.getOcrConfidence() != null

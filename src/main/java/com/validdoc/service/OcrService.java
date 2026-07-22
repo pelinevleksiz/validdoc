@@ -75,7 +75,8 @@ public class OcrService {
             } else {
                 OcrExtraction extraction = runOcr(tesseract, region, segment.getLabel());
                 byte[] croppedImagePng = encodeToPng(region, segment.getLabel());
-                readings.add(new SegmentReading(segment, extraction.text(), null, extraction.confidence(), croppedImagePng));
+                Double pixelDensity = extraction.text().isEmpty() ? computeInkDensity(region) : null;
+                readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImagePng));
             }
         }
         return readings;
