@@ -8,7 +8,9 @@ import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.User;
+import com.validdoc.model.enums.UserRole;
 import com.validdoc.repository.AuditLogRepository;
+import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.UserRepository;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -19,7 +21,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,11 +40,16 @@ public class UserController {
     private static final Sort ALPHABETICAL = Sort.by(Sort.Direction.ASC, "username");
 
     private final UserRepository userRepository;
+    private final DocumentRepository documentRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogRepository auditLogRepository;
 
-    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder, AuditLogRepository auditLogRepository) {
+    public UserController(UserRepository userRepository,
+                          DocumentRepository documentRepository,
+                          PasswordEncoder passwordEncoder,
+                          AuditLogRepository auditLogRepository) {
         this.userRepository = userRepository;
+        this.documentRepository = documentRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogRepository = auditLogRepository;
     }
@@ -70,6 +79,26 @@ public class UserController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new UserSummaryResponse(user.getId(), user.getUsername(), user.getEmail(), user.getRole().name()));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, String.valueOf(id)));
+
+        if (user.getRole() == UserRole.ADMIN && userRepository.countByRole(UserRole.ADMIN) <= 1) {
+            throw new ApiException(ErrorCode.CANNOT_DELETE_LAST_ADMIN);
+        }
+
+        if (documentRepository.existsByUploadedBy(user) || documentRepository.existsByOperator(user)) {
+            throw new ApiException(ErrorCode.USER_HAS_LINKED_DOCUMENTS, user.getUsername());
+        }
+
+        userRepository.delete(user);
+        auditLogRepository.save(new AuditLog("USER_DELETED", authentication.getName()));
+
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/me/password")

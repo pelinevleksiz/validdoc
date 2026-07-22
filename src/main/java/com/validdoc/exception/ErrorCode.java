@@ -13,6 +13,8 @@ public enum ErrorCode {
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "error.access.denied"),
     DUPLICATE_RECORD(HttpStatus.CONFLICT, "error.record.duplicate"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "error.user.not_found"),
+    CANNOT_DELETE_LAST_ADMIN(HttpStatus.CONFLICT, "error.user.cannot_delete_last_admin"),
+    USER_HAS_LINKED_DOCUMENTS(HttpStatus.CONFLICT, "error.user.has_linked_documents"),
     TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.template.not_found"),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "error.document.not_found"),
     INVALID_DOCUMENT_STATUS(HttpStatus.BAD_REQUEST, "error.document.invalid_status"),
