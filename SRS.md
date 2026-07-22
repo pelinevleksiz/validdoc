@@ -20,14 +20,14 @@
 ### 1.3 Template-Based Segmentation & Rule-Based Validation
 - An admin defines **page- and coordinate-based segments** on a template; each segment is assigned one or more rules from the system's fixed catalogs.
 - The rule catalog has two groups: *structural* (letters/digits/length/date/signature-stamp) and *validated format* (Turkish ID number and VKN, both checksum-validated; phone; email).
-- Each segment is evaluated as **filled-valid / filled-invalid / empty**; the result is reported per segment, not as a single aggregate score.
+- Each segment is evaluated as **filled-valid / filled-invalid / empty / pending-review**; the last is triggered when OCR confidence falls below a configurable threshold, regardless of whether the extracted text otherwise satisfied its rules.
 - **Templates cannot be modified once saved**; a correction is made by creating a new template.
 - An admin can **preview** segment coordinates against a sample document before saving.
 
 ### 1.4 Workflow & Approval Management
 - The upload request returns immediately with `202 Accepted`; document processing runs asynchronously in the background.
 - Document status is derived **deterministically** from segment results: all valid → `VALIDATED`, all empty → `REJECTED_EMPTY`, mixed → `REJECTED_INVALID`.
-- `PENDING_REVIEW` is used only for engine failures (corrupt file, page mismatch); there is no intermediate state driven by score uncertainty.
+- `PENDING_REVIEW` is triggered either by an engine failure (corrupt file, page mismatch) or by any segment falling below the OCR confidence threshold. In the latter case, an operator resolves each pending segment with a one-time, irreversible decision, after which the document's status is recomputed from the final segment outcomes.
 - Every automatic and manual outcome is written to an **audit log**; an operator can manually approve or reject any document regardless of its automatic result.
 
 ### 1.5 Multi-Language Support (Turkish / English)
@@ -47,6 +47,7 @@ Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are croppe
 ### 2.3 Database & Persistence
 - PostgreSQL and Spring Data JPA are used at the data layer; uploaded files are processed in memory only and are never persisted.
 - Once processing completes, only the result (status, segment report, timestamps) is persisted; it is automatically erased once the **retention period** elapses.
+- For a segment awaiting manual review, its cropped image is additionally persisted (encrypted with AES-256-GCM) and is deleted immediately once the segment is resolved, independent of the retention period.
 
 ---
 

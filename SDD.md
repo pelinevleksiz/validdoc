@@ -13,7 +13,7 @@ graph TD
     B --> G[PDF Rasterize - PDFBox]
 ```
 
-Sensitive fields (`segment_results`) are encrypted at the JPA `AttributeConverter` level with **AES-256-GCM**; the key is supplied only via an environment variable.
+Sensitive fields (`segment_results`, `segment_images.image_data`) are encrypted at the JPA `AttributeConverter` level with **AES-256-GCM**; the key is supplied only via an environment variable.
 
 ### 1.1 Container Readiness
 The Dockerfile is based on `eclipse-temurin:21-jre-jammy`; Tesseract 4.1.1 is installed via apt, and the `tessdata` path is fixed accordingly. Secrets (DB, JWT, encryption key) are supplied only via environment variables.
@@ -45,6 +45,7 @@ graph TD
     Eval -->|"all segments empty"| Empty["REJECTED_EMPTY"]
     Eval -->|"mixed outcome"| Invalid["REJECTED_INVALID"]
     Eval -->|"engine failure"| Review["PENDING_REVIEW"]
+    Eval -->|"any segment below confidence threshold"| Review
 
     Validated --> Save["Save status + segment_results, write audit log"]
     Empty --> Save
@@ -99,6 +100,7 @@ erDiagram
     TEMPLATE_SEGMENT ||--o{ SEGMENT_RULE : has
     TEMPLATE ||--o{ DOCUMENT_METADATA : validates
     DOCUMENT_METADATA ||--o{ AUDIT_LOG : logs
+    DOCUMENT_METADATA ||--o{ SEGMENT_IMAGES : "has (while pending)"
 
     USER {
         bigint id PK
@@ -130,14 +132,21 @@ erDiagram
         text segment_results
         bigint template_id FK
     }
+    SEGMENT_IMAGES {
+        bigint id PK
+        bigint document_id FK
+        bigint segment_id
+        text image_data
+    }
     VALIDATION_SETTINGS {
         bigint id PK
         int retention_days
         double ink_density_threshold
+        double ocr_confidence_threshold
     }
 ```
 
-**Note:** `templates` cannot be modified once saved; a correction is made by registering a new template. `audit_logs` is append-only and is exempt from the retention purge process.
+**Note:** `templates` cannot be modified once saved; a correction is made by registering a new template. `audit_logs` is append-only and is exempt from the retention purge process. `segment_images` rows are deleted as soon as their segment is resolved, independent of the retention job.
 
 ---
 
@@ -145,8 +154,8 @@ erDiagram
 
 - **5.1 In-Memory Processing:** Files are never written to disk; once processing completes, the `BufferedImage` is released for GC. A maximum file size of 5MB is enforced.
 - **5.2 Async Processing:** OCR and validation run in the background via an `@Async` thread pool (4-8 threads); the upload request returns `202 Accepted` immediately.
-- **5.3 Admin-Configurable Settings:** Only `retentionDays` and `inkDensityThreshold` can be changed at runtime (no restart required); they are stored in the `validation_settings` table.
-- **5.4 Segment Evaluation:** Each segment is evaluated against its own rules as `FILLED_VALID` / `FILLED_INVALID` / `EMPTY`; the result is masked and written as JSON into `segment_results`. Document status is derived deterministically from these results (see §2).
+- **5.3 Admin-Configurable Settings:** `retentionDays`, `inkDensityThreshold`, and `ocrConfidenceThreshold` can all be changed at runtime (no restart required); they are stored in the `validation_settings` table.
+- **5.4 Segment Evaluation:** Each segment is evaluated against its own rules as `FILLED_VALID` / `FILLED_INVALID` / `EMPTY` / `PENDING_REVIEW` (the last triggered by low OCR confidence); the result is masked and written as JSON into `segment_results`. Document status is derived deterministically from these results (see §2), and is recomputed once every `PENDING_REVIEW` segment has been manually resolved.
 - **5.5 Multi-Language (TR/EN):** The `Accept-Language` header determines the API message language, while a separate `lang` parameter determines the OCR scanning language — two independent signals. Since `Tesseract` is not thread-safe, each worker thread keeps its own instance (`ThreadLocal`).
 - **5.6 Upload Hardening:** the accepted file type is determined from the file's actual signature bytes (`FileSignatureValidator`) rather than the client-supplied `Content-Type` header, since the latter is trivially spoofable. Upload requests are also rate-limited per authenticated user (`UploadRateLimiter`, 20 requests per 60 seconds, in-memory) to protect the async processing pipeline from a single account's burst traffic.
 
@@ -171,9 +180,11 @@ erDiagram
 | POST | `/api/documents/upload` | OPERATOR/ADMIN | Uploads a document, processes it asynchronously |
 | GET | `/api/documents` | OPERATOR/ADMIN | Lists all documents, newest first (paginated) |
 | GET | `/api/documents/{id}` | OPERATOR/ADMIN | Returns a document and its segment report |
+| GET | `/api/documents/{id}/segments/{segmentId}/image` | OPERATOR/ADMIN | Returns a `PENDING_REVIEW` segment's stored crop image |
+| POST | `/api/documents/{id}/segments/{segmentId}/resolve` | OPERATOR | Applies a one-time manual decision to a `PENDING_REVIEW` segment |
 | GET | `/api/documents/queue` | OPERATOR/ADMIN | Returns the `PENDING_REVIEW` queue (paginated) |
 | POST | `/api/documents/{id}/verify` | OPERATOR | Applies a manual status |
-| GET/PUT | `/api/admin/validation-settings` | ADMIN | Manages retention and ink threshold |
+| GET/PUT | `/api/admin/validation-settings` | ADMIN | Manages retention, ink threshold, and OCR confidence threshold |
 | GET | `/api/admin/audit-logs` | ADMIN | Lists audit log entries, optionally filtered by `documentId` (paginated) |
 
 ---
