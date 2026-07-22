@@ -99,7 +99,7 @@ public class ValidationService {
         String segmentResultsJson = toJson(entries);
         log.debug("Document classified as {}, segments={}", status, segmentResultsJson);
 
-        return new ValidationResult(status, segmentResultsJson);
+        return new ValidationResult(status, segmentResultsJson, entries);
     }
 
     public DocumentStatus deriveStatus(List<SegmentResultEntry> entries) {

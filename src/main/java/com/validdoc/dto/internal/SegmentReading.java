@@ -9,18 +9,22 @@ public class SegmentReading {
     private final String extractedText;
     private final Double pixelDensity;
     private final Double ocrConfidence;
+    private final byte[] croppedImagePng;
 
-    public SegmentReading(TemplateSegment segment, String extractedText, Double pixelDensity, Double ocrConfidence) {
+    public SegmentReading(TemplateSegment segment, String extractedText, Double pixelDensity,
+                          Double ocrConfidence, byte[] croppedImagePng) {
         this.segment = segment;
         this.extractedText = extractedText;
         this.pixelDensity = pixelDensity;
         this.ocrConfidence = ocrConfidence;
+        this.croppedImagePng = croppedImagePng;
     }
 
     public TemplateSegment getSegment() { return segment; }
     public String getExtractedText() { return extractedText; }
     public Double getPixelDensity() { return pixelDensity; }
     public Double getOcrConfidence() { return ocrConfidence; }
+    public byte[] getCroppedImagePng() { return croppedImagePng; }
 
     public boolean isInkSegment() {
         return segment.getRules().stream().anyMatch(r ->

@@ -8,6 +8,8 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.validdoc.config.TesseractFactory;
@@ -20,8 +22,11 @@ import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +34,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class OcrService {
+
+    private static final Logger log = LoggerFactory.getLogger(OcrService.class);
 
     private final TesseractFactory tesseractFactory;
     private final ThreadLocal<Tesseract> tesseractHolder;
@@ -64,10 +71,11 @@ public class OcrService {
 
             if (isInkSegment(segment)) {
                 double density = computeInkDensity(region);
-                readings.add(new SegmentReading(segment, null, density, null));
+                readings.add(new SegmentReading(segment, null, density, null, null));
             } else {
                 OcrExtraction extraction = runOcr(tesseract, region, segment.getLabel());
-                readings.add(new SegmentReading(segment, extraction.text(), null, extraction.confidence()));
+                byte[] croppedImagePng = encodeToPng(region, segment.getLabel());
+                readings.add(new SegmentReading(segment, extraction.text(), null, extraction.confidence(), croppedImagePng));
             }
         }
         return readings;
@@ -86,6 +94,17 @@ public class OcrService {
             return new OcrExtraction(text, confidence);
         } catch (Throwable t) {
             throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segmentLabel, t);
+        }
+    }
+
+    private byte[] encodeToPng(BufferedImage region, String segmentLabel) {
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(region, "png", baos);
+            return baos.toByteArray();
+        } catch (IOException e) {
+            log.warn("Segment goruntusu PNG'e cevrilemedi, label={}", segmentLabel, e);
+            return null;
         }
     }
 

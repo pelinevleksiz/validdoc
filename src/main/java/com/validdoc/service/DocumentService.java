@@ -1,6 +1,7 @@
 package com.validdoc.service;
 
 import com.validdoc.dto.internal.SegmentReading;
+import com.validdoc.dto.internal.SegmentResultEntry;
 import com.validdoc.dto.internal.ValidationResult;
 import com.validdoc.exception.OcrEngineException;
 import com.validdoc.exception.OpenCVException;
@@ -9,12 +10,15 @@ import com.validdoc.exception.PdfRasterizationException;
 import com.validdoc.exception.TemplateDefinitionException;
 import com.validdoc.model.AuditLog;
 import com.validdoc.model.DocumentMetadata;
+import com.validdoc.model.SegmentImage;
 import com.validdoc.model.Template;
 import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.enums.SegmentOutcome;
 import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
+import com.validdoc.repository.SegmentImageRepository;
 import com.validdoc.repository.TemplateRepository;
 import jakarta.persistence.EntityNotFoundException;
 import net.sourceforge.tess4j.TesseractException;
@@ -24,10 +28,12 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,28 +50,28 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final TemplateRepository templateRepository;
     private final AuditLogRepository auditLogRepository;
+    private final SegmentImageRepository segmentImageRepository;
     private final PdfRasterService pdfRasterService;
     private final OcrService ocrService;
     private final ValidationService validationService;
     private final ValidationSettingsService validationSettingsService;
-    private final ImageNormalizationService imageNormalizationService;
 
     public DocumentService(DocumentRepository documentRepository,
                            TemplateRepository templateRepository,
                            AuditLogRepository auditLogRepository,
+                           SegmentImageRepository segmentImageRepository,
                            PdfRasterService pdfRasterService,
                            OcrService ocrService,
                            ValidationService validationService,
-                           ValidationSettingsService validationSettingsService,
-                           ImageNormalizationService imageNormalizationService) {
+                           ValidationSettingsService validationSettingsService) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
         this.auditLogRepository = auditLogRepository;
+        this.segmentImageRepository = segmentImageRepository;
         this.pdfRasterService = pdfRasterService;
         this.ocrService = ocrService;
         this.validationService = validationService;
         this.validationSettingsService = validationSettingsService;
-        this.imageNormalizationService = imageNormalizationService;
     }
 
     @Async
@@ -93,6 +99,7 @@ public class DocumentService {
             ValidationResult result = validationService.validate(readings);
 
             applyValidationResult(document, result);
+            persistPendingReviewImages(documentId, readings, result);
             finalizeDocument(document, "AUTO_" + document.getStatus().name());
         } catch (PdfRasterizationException | PageOutOfBoundsException | TesseractException
                  | OcrEngineException | OpenCVException | TemplateDefinitionException e) {
@@ -111,7 +118,10 @@ public class DocumentService {
     }
 
     private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {
-        BufferedImage image = imageNormalizationService.normalizeToA4Canvas(fileBytes);
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
+        if (image == null) {
+            throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
+        }
         for (Integer requiredPage : requiredPages) {
             if (requiredPage == null || requiredPage != SINGLE_IMAGE_PAGE_NUMBER) {
                 throw new PageOutOfBoundsException(
@@ -136,6 +146,32 @@ public class DocumentService {
 
         if (isTerminalStatus(result.getStatus())) {
             document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
+        }
+    }
+
+    private void persistPendingReviewImages(Long documentId, List<SegmentReading> readings, ValidationResult result) {
+        if (result.getEntries() == null) {
+            return;
+        }
+        Map<Long, byte[]> imagesBySegmentId = readings.stream()
+                .filter(r -> r.getSegment().getId() != null && r.getCroppedImagePng() != null)
+                .collect(Collectors.toMap(r -> r.getSegment().getId(), SegmentReading::getCroppedImagePng, (a, b) -> a));
+
+        for (SegmentResultEntry entry : result.getEntries()) {
+            if (entry.getOutcome() != SegmentOutcome.PENDING_REVIEW) {
+                continue;
+            }
+            byte[] imageBytes = imagesBySegmentId.get(entry.getSegmentId());
+            if (imageBytes == null) {
+                log.warn("PENDING_REVIEW segment icin goruntu bulunamadi, documentId={} segmentId={}", documentId, entry.getSegmentId());
+                continue;
+            }
+            SegmentImage image = new SegmentImage();
+            image.setDocumentId(documentId);
+            image.setSegmentId(entry.getSegmentId());
+            image.setImageDataBase64(Base64.getEncoder().encodeToString(imageBytes));
+            image.setCreatedAt(LocalDateTime.now());
+            segmentImageRepository.save(image);
         }
     }
 
