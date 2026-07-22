@@ -214,10 +214,10 @@ class ApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.templateId").exists())
+                .andExpect(jsonPath("$.id").exists())
                 .andReturn();
 
-        createdTemplateId = extractLongField(result, "templateId");
+        createdTemplateId = extractLongField(result, "id");
     }
 
     @Test
@@ -346,7 +346,7 @@ class ApiIntegrationTest {
                         .header("Authorization", "Bearer " + operatorToken))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
-                .andExpect(jsonPath("$.documentId").exists());
+                .andExpect(jsonPath("$.id").exists());
     }
 
     @Test
@@ -435,7 +435,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        inkTemplateId = extractLongField(result, "templateId");
+        inkTemplateId = extractLongField(result, "id");
     }
 
     @Test
@@ -450,7 +450,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isAccepted())
                 .andReturn();
 
-        signedDocumentId = extractLongField(uploadResult, "documentId");
+        signedDocumentId = extractLongField(uploadResult, "id");
         String finalStatus = pollForFinalStatus(signedDocumentId, operatorToken);
         assertTrue("VALIDATED".equals(finalStatus), "Expected VALIDATED but was " + finalStatus);
 
@@ -472,7 +472,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isAccepted())
                 .andReturn();
 
-        Long blankDocumentId = extractLongField(uploadResult, "documentId");
+        Long blankDocumentId = extractLongField(uploadResult, "id");
         String finalStatus = pollForFinalStatus(blankDocumentId, operatorToken);
         assertTrue("REJECTED_EMPTY".equals(finalStatus), "Expected REJECTED_EMPTY but was " + finalStatus);
     }
@@ -507,7 +507,7 @@ class ApiIntegrationTest {
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andReturn();
-        multiPageTemplateId = extractLongField(templateResult, "templateId");
+        multiPageTemplateId = extractLongField(templateResult, "id");
 
         MockMultipartFile file = new MockMultipartFile("file", "single-page.png", "image/png", generateInkImage(false));
 
@@ -518,7 +518,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isAccepted())
                 .andReturn();
 
-        mismatchDocumentId = extractLongField(uploadResult, "documentId");
+        mismatchDocumentId = extractLongField(uploadResult, "id");
         String finalStatus = pollForFinalStatus(mismatchDocumentId, operatorToken);
         assertTrue("PENDING_REVIEW".equals(finalStatus), "Expected PENDING_REVIEW but was " + finalStatus);
     }

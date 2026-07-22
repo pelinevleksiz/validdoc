@@ -115,7 +115,7 @@ public class DocumentController {
         documentService.processDocument(document.getId(), fileBytes, detectedContentType, templateId);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("documentId", document.getId());
+        body.put("id", document.getId());
         body.put("status", document.getStatus().name());
         body.put("language", document.getLanguage().name());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);

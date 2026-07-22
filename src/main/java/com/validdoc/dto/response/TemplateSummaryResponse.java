@@ -2,18 +2,18 @@ package com.validdoc.dto.response;
 
 public class TemplateSummaryResponse {
 
-    private Long templateId;
+    private Long id;
     private String name;
 
     public TemplateSummaryResponse() {}
 
-    public TemplateSummaryResponse(Long templateId, String name) {
-        this.templateId = templateId;
+    public TemplateSummaryResponse(Long id, String name) {
+        this.id = id;
         this.name = name;
     }
 
-    public Long getTemplateId() { return templateId; }
-    public void setTemplateId(Long templateId) { this.templateId = templateId; }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

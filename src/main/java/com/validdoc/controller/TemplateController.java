@@ -126,7 +126,7 @@ public class TemplateController {
 
         template = templateRepository.save(template);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("templateId", template.getId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", template.getId()));
     }
 
     @PostMapping(value = "/preview", consumes = "multipart/form-data")
