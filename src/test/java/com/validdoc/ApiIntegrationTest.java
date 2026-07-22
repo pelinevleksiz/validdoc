@@ -360,7 +360,7 @@ class ApiIntegrationTest {
         mockMvc.perform(put("/api/admin/validation-settings")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"retentionDays\": 45, \"inkDensityThreshold\": 0.02}"))
+                        .content("{\"retentionDays\": 45, \"inkDensityThreshold\": 0.02, \"ocrConfidenceThreshold\": 55.0}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.retentionDays").value(45));
     }

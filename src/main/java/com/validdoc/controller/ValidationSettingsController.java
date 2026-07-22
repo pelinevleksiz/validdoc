@@ -38,6 +38,7 @@ public class ValidationSettingsController {
         ValidationSettings updated = settingsService.update(
                 request.getRetentionDays(),
                 request.getInkDensityThreshold(),
+                request.getOcrConfidenceThreshold(),
                 authentication.getName());
 
         auditLogRepository.save(new AuditLog("VALIDATION_SETTINGS_UPDATED", authentication.getName()));
@@ -49,6 +50,7 @@ public class ValidationSettingsController {
         return new ValidationSettingsResponse(
                 settings.getRetentionDays(),
                 settings.getInkDensityThreshold(),
+                settings.getOcrConfidenceThreshold(),
                 settings.getUpdatedAt(),
                 settings.getUpdatedBy());
     }

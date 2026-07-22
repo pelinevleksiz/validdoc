@@ -16,9 +16,17 @@ public class ValidationSettingsUpdateRequest {
     @DecimalMax(value = "1.0")
     private Double inkDensityThreshold;
 
+    @NotNull
+    @DecimalMin(value = "0.0")
+    @DecimalMax(value = "100.0")
+    private Double ocrConfidenceThreshold;
+
     public Integer getRetentionDays() { return retentionDays; }
     public void setRetentionDays(Integer retentionDays) { this.retentionDays = retentionDays; }
 
     public Double getInkDensityThreshold() { return inkDensityThreshold; }
     public void setInkDensityThreshold(Double inkDensityThreshold) { this.inkDensityThreshold = inkDensityThreshold; }
+
+    public Double getOcrConfidenceThreshold() { return ocrConfidenceThreshold; }
+    public void setOcrConfidenceThreshold(Double ocrConfidenceThreshold) { this.ocrConfidenceThreshold = ocrConfidenceThreshold; }
 }

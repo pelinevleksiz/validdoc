@@ -20,6 +20,9 @@ public class ValidationSettings {
     private double inkDensityThreshold;
 
     @Column(nullable = false)
+    private double ocrConfidenceThreshold;
+
+    @Column(nullable = false)
     private LocalDateTime updatedAt;
 
     @Column(nullable = false, length = 50)
@@ -35,6 +38,9 @@ public class ValidationSettings {
 
     public double getInkDensityThreshold() { return inkDensityThreshold; }
     public void setInkDensityThreshold(double inkDensityThreshold) { this.inkDensityThreshold = inkDensityThreshold; }
+
+    public double getOcrConfidenceThreshold() { return ocrConfidenceThreshold; }
+    public void setOcrConfidenceThreshold(double ocrConfidenceThreshold) { this.ocrConfidenceThreshold = ocrConfidenceThreshold; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

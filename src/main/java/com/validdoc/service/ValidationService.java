@@ -1,10 +1,12 @@
 package com.validdoc.service;
 
 import com.validdoc.dto.internal.SegmentReading;
+import com.validdoc.dto.internal.SegmentResultEntry;
 import com.validdoc.dto.internal.ValidationResult;
 import com.validdoc.model.SegmentRule;
 import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.enums.SegmentOutcome;
 import com.validdoc.model.enums.SegmentRuleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +19,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 @Service
@@ -53,59 +53,74 @@ public class ValidationService {
     }
 
     public ValidationResult validate(List<SegmentReading> readings) {
-        List<Map<String, Object>> segmentEntries = new ArrayList<>();
-        int emptyCount = 0;
-        int validCount = 0;
+        List<SegmentResultEntry> entries = new ArrayList<>();
 
         for (SegmentReading reading : readings) {
             TemplateSegment segment = reading.getSegment();
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("label", segment.getLabel());
+            SegmentResultEntry entry = new SegmentResultEntry();
+            entry.setSegmentId(segment.getId());
+            entry.setLabel(segment.getLabel());
 
             if (reading.isInkSegment()) {
                 boolean inked = reading.getPixelDensity() != null
                         && reading.getPixelDensity() >= settings.getInkDensityThreshold();
-                if (inked) {
-                    entry.put("outcome", "FILLED_VALID");
-                    validCount++;
-                } else {
-                    entry.put("outcome", "EMPTY");
-                    emptyCount++;
-                }
+                entry.setOutcome(inked ? SegmentOutcome.FILLED_VALID : SegmentOutcome.EMPTY);
             } else {
                 String text = reading.getExtractedText() == null ? "" : reading.getExtractedText().trim();
                 if (text.isEmpty()) {
-                    entry.put("outcome", "EMPTY");
-                    emptyCount++;
+                    entry.setOutcome(SegmentOutcome.EMPTY);
                 } else {
                     List<String> failedRules = evaluateTextRules(segment, text);
-                    if (failedRules.isEmpty()) {
-                        entry.put("outcome", "FILLED_VALID");
-                        validCount++;
+                    boolean lowConfidence = reading.getOcrConfidence() != null
+                            && reading.getOcrConfidence() < settings.getOcrConfidenceThreshold();
+
+                    if (lowConfidence) {
+                        entry.setOutcome(SegmentOutcome.PENDING_REVIEW);
+                        if (!failedRules.isEmpty()) {
+                            entry.setFailedRules(failedRules);
+                        }
+                    } else if (failedRules.isEmpty()) {
+                        entry.setOutcome(SegmentOutcome.FILLED_VALID);
                     } else {
-                        entry.put("outcome", "FILLED_INVALID");
-                        entry.put("failedRules", failedRules);
+                        entry.setOutcome(SegmentOutcome.FILLED_INVALID);
+                        entry.setFailedRules(failedRules);
                     }
-                    entry.put("maskedValue", maskValue(segment, text));
+
+                    entry.setMaskedValue(maskValue(segment, text));
+                    if (reading.getOcrConfidence() != null) {
+                        entry.setOcrConfidence(Math.round(reading.getOcrConfidence() * 10.0) / 10.0);
+                    }
                 }
             }
-            segmentEntries.add(entry);
+            entries.add(entry);
         }
 
-        DocumentStatus status;
-        if (readings.isEmpty()) {
-            status = DocumentStatus.REJECTED_EMPTY;
-        } else if (emptyCount == readings.size()) {
-            status = DocumentStatus.REJECTED_EMPTY;
-        } else if (validCount == readings.size()) {
-            status = DocumentStatus.VALIDATED;
-        } else {
-            status = DocumentStatus.REJECTED_INVALID;
+        DocumentStatus status = deriveStatus(entries);
+        String segmentResultsJson = toJson(entries);
+        log.debug("Document classified as {}, segments={}", status, segmentResultsJson);
+
+        return new ValidationResult(status, segmentResultsJson);
+    }
+
+    public DocumentStatus deriveStatus(List<SegmentResultEntry> entries) {
+        if (entries.isEmpty()) {
+            return DocumentStatus.REJECTED_EMPTY;
         }
 
-        log.debug("Document classified as {}, segments={}", status, segmentEntries);
+        long emptyCount = entries.stream().filter(e -> e.getOutcome() == SegmentOutcome.EMPTY).count();
+        long validCount = entries.stream().filter(e -> e.getOutcome() == SegmentOutcome.FILLED_VALID).count();
+        long pendingCount = entries.stream().filter(e -> e.getOutcome() == SegmentOutcome.PENDING_REVIEW).count();
 
-        return new ValidationResult(status, toJson(segmentEntries));
+        if (emptyCount == entries.size()) {
+            return DocumentStatus.REJECTED_EMPTY;
+        }
+        if (pendingCount > 0) {
+            return DocumentStatus.PENDING_REVIEW;
+        }
+        if (validCount == entries.size()) {
+            return DocumentStatus.VALIDATED;
+        }
+        return DocumentStatus.REJECTED_INVALID;
     }
 
     private List<String> evaluateTextRules(TemplateSegment segment, String text) {
@@ -231,9 +246,9 @@ public class ValidationService {
         return sb.toString();
     }
 
-    private String toJson(List<Map<String, Object>> segmentEntries) {
+    private String toJson(List<SegmentResultEntry> entries) {
         try {
-            return jsonMapper.writeValueAsString(segmentEntries);
+            return jsonMapper.writeValueAsString(entries);
         } catch (JacksonException e) {
             log.warn("Segment sonuclari serialize edilemedi, null olarak donuluyor", e);
             return null;

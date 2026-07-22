@@ -31,6 +31,7 @@ public class ValidationSettingsService {
         seeded.setId(ValidationSettings.SINGLETON_ID);
         seeded.setRetentionDays(defaults.getRetentionDays());
         seeded.setInkDensityThreshold(defaults.getInkDensityThreshold());
+        seeded.setOcrConfidenceThreshold(defaults.getOcrConfidenceThreshold());
         seeded.setUpdatedAt(LocalDateTime.now());
         seeded.setUpdatedBy("SYSTEM_SEED");
         return repository.save(seeded);
@@ -38,16 +39,19 @@ public class ValidationSettingsService {
 
     public int getRetentionDays() { return current.getRetentionDays(); }
     public double getInkDensityThreshold() { return current.getInkDensityThreshold(); }
+    public double getOcrConfidenceThreshold() { return current.getOcrConfidenceThreshold(); }
 
     public ValidationSettings getSnapshot() {
         return current;
     }
 
-    public synchronized ValidationSettings update(int retentionDays, double inkDensityThreshold, String updatedBy) {
+    public synchronized ValidationSettings update(int retentionDays, double inkDensityThreshold,
+                                                  double ocrConfidenceThreshold, String updatedBy) {
         ValidationSettings updated = new ValidationSettings();
         updated.setId(ValidationSettings.SINGLETON_ID);
         updated.setRetentionDays(retentionDays);
         updated.setInkDensityThreshold(inkDensityThreshold);
+        updated.setOcrConfidenceThreshold(ocrConfidenceThreshold);
         updated.setUpdatedAt(LocalDateTime.now());
         updated.setUpdatedBy(updatedBy);
 

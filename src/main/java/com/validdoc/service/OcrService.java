@@ -1,7 +1,9 @@
 package com.validdoc.service;
 
+import net.sourceforge.tess4j.ITessAPI;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
+import net.sourceforge.tess4j.Word;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -23,6 +25,7 @@ import java.awt.image.DataBufferByte;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class OcrService {
@@ -61,18 +64,26 @@ public class OcrService {
 
             if (isInkSegment(segment)) {
                 double density = computeInkDensity(region);
-                readings.add(new SegmentReading(segment, null, density));
+                readings.add(new SegmentReading(segment, null, density, null));
             } else {
-                String text = runOcr(tesseract, region, segment.getLabel());
-                readings.add(new SegmentReading(segment, text, null));
+                OcrExtraction extraction = runOcr(tesseract, region, segment.getLabel());
+                readings.add(new SegmentReading(segment, extraction.text(), null, extraction.confidence()));
             }
         }
         return readings;
     }
 
-    private String runOcr(Tesseract tesseract, BufferedImage region, String segmentLabel) {
+    private record OcrExtraction(String text, Double confidence) {}
+
+    private OcrExtraction runOcr(Tesseract tesseract, BufferedImage region, String segmentLabel) {
         try {
-            return tesseract.doOCR(region).trim();
+            List<Word> words = tesseract.getWords(region, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+            String text = words.stream().map(Word::getText).collect(Collectors.joining(" ")).trim();
+            Double confidence = words.isEmpty() ? null : words.stream()
+                    .mapToDouble(Word::getConfidence)
+                    .average()
+                    .orElse(0.0);
+            return new OcrExtraction(text, confidence);
         } catch (Throwable t) {
             throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segmentLabel, t);
         }
