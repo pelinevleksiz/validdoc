@@ -1,9 +1,19 @@
 package com.validdoc;
 
 import com.validdoc.config.DocumentGeometry;
+import com.validdoc.dto.internal.SegmentResultEntry;
+import com.validdoc.model.DocumentMetadata;
+import com.validdoc.model.SegmentImage;
+import com.validdoc.model.Template;
 import com.validdoc.model.User;
+import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.enums.SegmentOutcome;
 import com.validdoc.model.enums.UserRole;
+import com.validdoc.repository.DocumentRepository;
+import com.validdoc.repository.SegmentImageRepository;
+import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
+import com.validdoc.scheduler.RetentionCleanupJob;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -16,6 +26,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -23,13 +35,19 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.hamcrest.Matchers.contains;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -43,6 +61,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ApiIntegrationTest {
 
     private static final String RATE_LIMIT_TEST_REMOTE_ADDR = "203.0.113.10";
+    private static final String AUX_LOGIN_REMOTE_ADDR = "203.0.113.30";
     private static final String RUN_ID = String.valueOf(System.currentTimeMillis());
     private static final String ADMIN_USERNAME = "admin_test_" + RUN_ID;
     private static final String ADMIN_PASSWORD = "AdminTestPass1!";
@@ -56,6 +75,21 @@ class ApiIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
+    private TemplateRepository templateRepository;
+
+    @Autowired
+    private SegmentImageRepository segmentImageRepository;
+
+    @Autowired
+    private RetentionCleanupJob retentionCleanupJob;
+
+    @Autowired
+    private JsonMapper jsonMapper;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private static String adminToken;
@@ -65,6 +99,10 @@ class ApiIntegrationTest {
     private static Long multiPageTemplateId;
     private static Long signedDocumentId;
     private static Long mismatchDocumentId;
+    private static Long resolveTemplateId;
+    private static Long resolveSegmentAId;
+    private static Long resolveSegmentBId;
+    private static Long resolveTestDocumentId;
 
     private String extractToken(MvcResult result) throws Exception {
         String body = result.getResponse().getContentAsString();
@@ -560,5 +598,346 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.segments[0].inkDensity").exists())
                 .andExpect(jsonPath("$.segments[0].label").value("Imza"));
+    }
+
+    @Test
+    @Order(28)
+    void resolveTestTemplateAndDocumentAreSeededAsPendingReview() throws Exception {
+        String requestBody = """
+                {
+                  "name": "Resolve Test Template %s",
+                  "segments": [
+                    { "label": "AlanA", "page": 1, "x": 100, "y": 100, "w": 200, "h": 80,
+                      "rules": [ { "type": "LETTERS_ONLY" } ] },
+                    { "label": "AlanB", "page": 1, "x": 100, "y": 300, "w": 200, "h": 80,
+                      "rules": [ { "type": "DIGITS_ONLY" } ] }
+                  ]
+                }
+                """.formatted(RUN_ID);
+
+        MvcResult templateResult = mockMvc.perform(post("/api/templates")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andReturn();
+        resolveTemplateId = extractLongField(templateResult, "id");
+
+        MvcResult detailResult = mockMvc.perform(get("/api/templates/" + resolveTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String detailBody = detailResult.getResponse().getContentAsString();
+        Matcher idMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailBody);
+        List<Long> ids = new ArrayList<>();
+        while (idMatcher.find()) {
+            ids.add(Long.valueOf(idMatcher.group(1)));
+        }
+        assertEquals(3, ids.size(), "Template + iki segment icin toplam 3 id bekleniyordu: " + detailBody);
+        resolveSegmentAId = ids.get(1);
+        resolveSegmentBId = ids.get(2);
+
+        MockMultipartFile file = new MockMultipartFile("file", "resolve-seed.png", "image/png", generateInkImage(false));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(resolveTemplateId))
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        resolveTestDocumentId = extractLongField(uploadResult, "id");
+        pollForFinalStatus(resolveTestDocumentId, operatorToken);
+
+        SegmentResultEntry entryA = new SegmentResultEntry();
+        entryA.setSegmentId(resolveSegmentAId);
+        entryA.setLabel("AlanA");
+        entryA.setOutcome(SegmentOutcome.PENDING_REVIEW);
+
+        SegmentResultEntry entryB = new SegmentResultEntry();
+        entryB.setSegmentId(resolveSegmentBId);
+        entryB.setLabel("AlanB");
+        entryB.setOutcome(SegmentOutcome.PENDING_REVIEW);
+
+        String segmentResultsJson = jsonMapper.writeValueAsString(List.of(entryA, entryB));
+
+        DocumentMetadata document = documentRepository.findById(resolveTestDocumentId).orElseThrow();
+        document.setStatus(DocumentStatus.PENDING_REVIEW);
+        document.setSegmentResults(segmentResultsJson);
+        documentRepository.save(document);
+
+        SegmentImage image = new SegmentImage();
+        image.setDocumentId(resolveTestDocumentId);
+        image.setSegmentId(resolveSegmentBId);
+        image.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
+        image.setCreatedAt(LocalDateTime.now());
+        segmentImageRepository.save(image);
+
+        mockMvc.perform(get("/api/documents/" + resolveTestDocumentId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
+    }
+
+    @Test
+    @Order(29)
+    void segmentImageIsAvailableWhilePending() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentBId + "/image")
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String contentType = result.getResponse().getContentType();
+        assertTrue(contentType != null && contentType.startsWith("image/png"),
+                "Beklenen content-type image/png degil: " + contentType);
+        assertTrue(result.getResponse().getContentAsByteArray().length > 0, "Segment goruntusu bos donuyor");
+    }
+
+    @Test
+    @Order(30)
+    void operatorCanResolveOneOfTwoPendingSegmentsAndDocumentStaysPendingReview() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
+    }
+
+    @Test
+    @Order(31)
+    void resolvingAlreadyResolvedSegmentIsRejected() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SEGMENT_ALREADY_RESOLVED"));
+    }
+
+    @Test
+    @Order(32)
+    void resolvingSegmentWithPendingReviewOutcomeIsRejected() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentBId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"PENDING_REVIEW\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SEGMENT_RESOLUTION_OUTCOME"));
+    }
+
+    @Test
+    @Order(33)
+    void resolvingLastPendingSegmentRecomputesDocumentStatus() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentBId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_INVALID\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED_INVALID"));
+    }
+
+    @Test
+    @Order(34)
+    void segmentImageIsDeletedAfterResolve() throws Exception {
+        mockMvc.perform(get("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentBId + "/image")
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SEGMENT_IMAGE_NOT_FOUND"));
+    }
+
+    @Test
+    @Order(35)
+    void resolvingSegmentOnDocumentNotInPendingReviewIsRejected() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_PENDING_REVIEW"));
+    }
+
+    @Test
+    @Order(36)
+    void engineFailurePendingReviewDocumentCannotHaveSegmentsResolved() throws Exception {
+        MvcResult detailResult = mockMvc.perform(get("/api/templates/" + multiPageTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        Matcher idMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailResult.getResponse().getContentAsString());
+        assertTrue(idMatcher.find(), "Template id bulunamadi");
+        assertTrue(idMatcher.find(), "Segment id bulunamadi");
+        Long multiPageSegmentId = Long.valueOf(idMatcher.group(1));
+
+        MockMultipartFile file = new MockMultipartFile("file", "another-single-page.png", "image/png", generateInkImage(false));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(multiPageTemplateId))
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        Long engineFailureDocumentId = extractLongField(uploadResult, "id");
+        String finalStatus = pollForFinalStatus(engineFailureDocumentId, operatorToken);
+        assertTrue("PENDING_REVIEW".equals(finalStatus), "Expected PENDING_REVIEW but was " + finalStatus);
+
+        mockMvc.perform(post("/api/documents/" + engineFailureDocumentId
+                        + "/segments/" + multiPageSegmentId + "/resolve")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_PENDING_REVIEW"));
+    }
+
+    @Test
+    @Order(37)
+    void abandonedPendingReviewDocumentAutoExpiresToRejectedInvalid() throws Exception {
+        User uploader = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
+        Template template = templateRepository.findById(createdTemplateId).orElseThrow();
+
+        DocumentMetadata abandoned = new DocumentMetadata();
+        abandoned.setFileName("abandoned-test.png");
+        abandoned.setUploadedBy(uploader);
+        abandoned.setTemplate(template);
+        abandoned.setStatus(DocumentStatus.PENDING_REVIEW);
+        abandoned.setProcessedAt(LocalDateTime.now().minusYears(5));
+        abandoned = documentRepository.save(abandoned);
+        Long abandonedDocumentId = abandoned.getId();
+
+        retentionCleanupJob.expireAbandonedReviews();
+
+        DocumentMetadata reloaded = documentRepository.findById(abandonedDocumentId).orElseThrow();
+        assertEquals(DocumentStatus.REJECTED_INVALID, reloaded.getStatus());
+        assertNotNull(reloaded.getPurgeAt());
+    }
+
+    @Test
+    @Order(38)
+    void userListIsPaginatedForAdmin() throws Exception {
+        mockMvc.perform(get("/api/users?page=0&size=5")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(5))
+                .andExpect(jsonPath("$.totalElements").exists());
+    }
+
+    @Test
+    @Order(39)
+    void userListIsForbiddenForOperator() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(40)
+    void adminCanDeleteUserWithoutLinkedDocuments() throws Exception {
+        String throwawayUsername = "throwaway_" + RUN_ID;
+        MvcResult createResult = mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + throwawayUsername + "\",\"password\":\"ThrowawayPass1!\",\"email\":\""
+                                + throwawayUsername + "@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long throwawayUserId = extractLongField(createResult, "id");
+
+        mockMvc.perform(delete("/api/users/" + throwawayUserId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + throwawayUsername + "\",\"password\":\"ThrowawayPass1!\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(41)
+    void cannotDeleteUserWithLinkedDocuments() throws Exception {
+        User operatorUser = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
+
+        mockMvc.perform(delete("/api/users/" + operatorUser.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("USER_HAS_LINKED_DOCUMENTS"));
+    }
+
+    // Bu test tek admin kalmis senaryosunu, mevcut gercek admin hesaplarini kalici olarak
+    // silmeden simule etmek icin @Transactional kullaniyor: testin ici, diger tum admin
+    // kayitlarini gecici olarak siler, kontrolu yapar, sonra Spring test rollback'i sayesinde
+    // test bitince hepsi otomatik geri gelir. Kalici hicbir silme olmaz.
+    @Test
+    @Order(42)
+    @Transactional
+    void cannotDeleteLastRemainingAdmin() throws Exception {
+        User self = userRepository.findByUsername(ADMIN_USERNAME).orElseThrow();
+
+        List<User> otherAdmins = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == UserRole.ADMIN)
+                .filter(u -> !u.getId().equals(self.getId()))
+                .toList();
+        userRepository.deleteAll(otherAdmins);
+
+        assertEquals(1L, userRepository.countByRole(UserRole.ADMIN),
+                "Test setup tek admin birakmadi, once diger adminler silinmeliydi");
+
+        mockMvc.perform(delete("/api/users/" + self.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CANNOT_DELETE_LAST_ADMIN"));
+    }
+
+    @Test
+    @Order(43)
+    void changingOwnPasswordWithWrongCurrentPasswordFails() throws Exception {
+        mockMvc.perform(put("/api/users/me/password")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"WrongPassword1!\",\"newPassword\":\"NewAdminPass1!\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("BAD_CREDENTIALS"));
+    }
+
+    @Test
+    @Order(44)
+    void changingOwnPasswordSucceedsAndOldPasswordNoLongerWorks() throws Exception {
+        String newPassword = "NewAdminPass1!";
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"" + ADMIN_PASSWORD + "\",\"newPassword\":\"" + newPassword + "\"}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + ADMIN_USERNAME + "\",\"password\":\"" + ADMIN_PASSWORD + "\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + ADMIN_USERNAME + "\",\"password\":\"" + newPassword + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists());
     }
 }
