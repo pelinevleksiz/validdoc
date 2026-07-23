@@ -45,6 +45,7 @@ import java.util.regex.Pattern;
 import static org.hamcrest.Matchers.contains;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -939,5 +940,28 @@ class ApiIntegrationTest {
                         .content("{\"username\":\"" + ADMIN_USERNAME + "\",\"password\":\"" + newPassword + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").exists());
+    }
+
+    @Test
+    @Order(45)
+    void purgeJobAnonymizesSegmentResultsPastRetention() throws Exception {
+        User uploader = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
+        Template template = templateRepository.findById(createdTemplateId).orElseThrow();
+
+        DocumentMetadata expired = new DocumentMetadata();
+        expired.setFileName("purge-test.png");
+        expired.setUploadedBy(uploader);
+        expired.setTemplate(template);
+        expired.setStatus(DocumentStatus.VALIDATED);
+        expired.setSegmentResults("[{\"segmentId\":1,\"label\":\"Test\",\"outcome\":\"FILLED_VALID\"}]");
+        expired.setProcessedAt(LocalDateTime.now().minusDays(200));
+        expired.setPurgeAt(LocalDateTime.now().minusDays(1));
+        expired = documentRepository.save(expired);
+        Long expiredDocumentId = expired.getId();
+
+        retentionCleanupJob.purgeExpiredSegmentResults();
+
+        DocumentMetadata reloaded = documentRepository.findById(expiredDocumentId).orElseThrow();
+        assertNull(reloaded.getSegmentResults());
     }
 }
