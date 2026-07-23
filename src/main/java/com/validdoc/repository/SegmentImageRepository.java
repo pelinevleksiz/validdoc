@@ -12,4 +12,5 @@ public interface SegmentImageRepository extends JpaRepository<SegmentImage, Long
     Optional<SegmentImage> findByDocumentIdAndSegmentId(Long documentId, Long segmentId);
     List<SegmentImage> findByDocumentId(Long documentId);
     void deleteByDocumentIdAndSegmentId(Long documentId, Long segmentId);
+    void deleteByDocumentId(Long documentId);
 }

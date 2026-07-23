@@ -19,6 +19,8 @@ public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long
 
     List<DocumentMetadata> findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(LocalDateTime dateTime);
 
+    List<DocumentMetadata> findByStatusAndProcessedAtLessThan(DocumentStatus status, LocalDateTime cutoff);
+
     Page<DocumentMetadata> findAllByOrderByUploadedAtDesc(Pageable pageable);
 
     boolean existsByUploadedBy(User uploadedBy);
