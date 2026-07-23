@@ -17,6 +17,7 @@ public class Template {
     private String name;
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
     private List<TemplateSegment> segments = new ArrayList<>();
 
     public Template() {}

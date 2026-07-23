@@ -124,8 +124,8 @@ public class DocumentService {
             log.error("Goruntu okunamadi, documentId={}", documentId, e);
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
-        } catch (Exception e) {
-            log.error("Beklenmeyen hata, documentId={}", documentId, e);
+        } catch (Throwable t) {
+            log.error("Beklenmeyen hata, documentId={}", documentId, t);
             applyEngineFailure(document);
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
         }

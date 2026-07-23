@@ -165,6 +165,7 @@ public class TemplateController {
     private TemplateDetailResponse toDetail(Template template) {
         List<TemplateSegmentDetailResponse> segments = template.getSegments().stream()
                 .map(segment -> new TemplateSegmentDetailResponse(
+                        segment.getId(),
                         segment.getLabel(),
                         segment.getPage(),
                         segment.getX(),
