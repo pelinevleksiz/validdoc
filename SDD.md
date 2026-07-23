@@ -171,7 +171,10 @@ erDiagram
 |---|---|---|---|
 | GET | `/actuator/health` | Public | Provides an authentication-free liveness check |
 | POST | `/api/auth/login` | Public | Issues a JWT (valid for 10 min) |
+| GET | `/api/users` | ADMIN | Lists users (paginated) |
 | POST | `/api/users` | ADMIN | Creates a new user |
+| DELETE | `/api/users/{id}` | ADMIN | Deletes a user; blocked for the last admin or a user with linked documents |
+| PUT | `/api/users/me/password` | Authenticated | Changes the caller's own password |
 | GET | `/api/templates` | OPERATOR/ADMIN | Lists templates (paginated) |
 | POST | `/api/templates` | ADMIN | Saves a template with segments and rules (immutable) |
 | GET | `/api/templates/{id}` | OPERATOR/ADMIN | Returns a template's full segment and rule detail |

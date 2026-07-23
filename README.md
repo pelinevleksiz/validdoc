@@ -88,15 +88,23 @@ The test suite connects to the local Postgres instance; ensure it is running (`d
 |---|---|---|
 | `POST /api/auth/login` | Public | Issues a JWT |
 | `PUT /api/users/me/password` | Authenticated | Changes the caller's own password |
+| `GET /api/users` | Admin | Lists users (paginated) |
 | `POST /api/users` | Admin | Creates a user account |
+| `DELETE /api/users/{id}` | Admin | Deletes a user (blocked for the last admin or a user with linked documents) |
+| `GET /api/templates` | Operator/Admin | Lists templates (paginated) |
 | `POST /api/templates` | Admin | Defines a template with segments and rules |
+| `GET /api/templates/{id}` | Operator/Admin | Returns a template's full segment and rule detail |
+| `GET /api/templates/rule-types` | Admin | Returns the fixed rule catalog |
 | `POST /api/templates/preview` | Admin | Previews segment extraction without persisting a template |
-| `POST /api/documents/upload` | Operator | Uploads a document for asynchronous processing |
-| `GET /api/documents/{id}` | Authenticated | Returns document status and segment results |
-| `GET /api/documents/queue` | Admin | Lists documents in `PENDING_REVIEW` |
+| `POST /api/documents/upload` | Operator/Admin | Uploads a document for asynchronous processing |
+| `GET /api/documents` | Operator/Admin | Lists all documents, newest first (paginated) |
+| `GET /api/documents/{id}` | Operator/Admin | Returns document status and segment results |
+| `GET /api/documents/{id}/segments/{segmentId}/image` | Operator/Admin | Returns a `PENDING_REVIEW` segment's stored crop image |
+| `POST /api/documents/{id}/segments/{segmentId}/resolve` | Operator | Applies a one-time manual decision to a `PENDING_REVIEW` segment |
+| `GET /api/documents/queue` | Operator/Admin | Lists documents in `PENDING_REVIEW` |
 | `POST /api/documents/{id}/verify` | Operator | Manually approves or rejects a document |
 | `GET /api/admin/audit-logs` | Admin | Returns the audit log, newest first |
-| `GET/PUT /api/admin/validation-settings` | Admin | Reads or updates retention period and ink-density threshold |
+| `GET/PUT /api/admin/validation-settings` | Admin | Reads or updates retention period, ink-density threshold, and OCR confidence threshold |
 | `GET /actuator/health` | Public | Health check |
 
 ## Frontend Integration

@@ -13,8 +13,6 @@ import java.util.List;
 @Repository
 public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long> {
 
-    List<DocumentMetadata> findByUploadedByOrderByUploadedAtDesc(User uploadedBy);
-
     Page<DocumentMetadata> findByStatus(DocumentStatus status, Pageable pageable);
 
     List<DocumentMetadata> findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(LocalDateTime dateTime);
