@@ -33,8 +33,8 @@ build/
 .vscode/
 
 ### validdoc local test artifacts ###
-*.json
-!package.json
+/*.json
+!/package.json
 test.png
 *.log
 .env
