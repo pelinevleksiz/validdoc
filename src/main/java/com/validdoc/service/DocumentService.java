@@ -34,7 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -64,6 +63,7 @@ public class DocumentService {
     private final OcrService ocrService;
     private final ValidationService validationService;
     private final ValidationSettingsService validationSettingsService;
+    private final ImageNormalizationService imageNormalizationService;
     private final JsonMapper jsonMapper;
 
     public DocumentService(DocumentRepository documentRepository,
@@ -75,6 +75,7 @@ public class DocumentService {
                            OcrService ocrService,
                            ValidationService validationService,
                            ValidationSettingsService validationSettingsService,
+                           ImageNormalizationService imageNormalizationService,
                            JsonMapper jsonMapper) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
@@ -85,6 +86,7 @@ public class DocumentService {
         this.ocrService = ocrService;
         this.validationService = validationService;
         this.validationSettingsService = validationSettingsService;
+        this.imageNormalizationService = imageNormalizationService;
         this.jsonMapper = jsonMapper;
     }
 
@@ -200,10 +202,7 @@ public class DocumentService {
     }
 
     private Map<Integer, BufferedImage> renderSingleImagePage(byte[] fileBytes, Set<Integer> requiredPages) throws IOException {
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
-        if (image == null) {
-            throw new IOException("Goruntu formati desteklenmiyor veya bozuk");
-        }
+        BufferedImage image = imageNormalizationService.normalizeToA4Canvas(fileBytes);
         for (Integer requiredPage : requiredPages) {
             if (requiredPage == null || requiredPage != SINGLE_IMAGE_PAGE_NUMBER) {
                 throw new PageOutOfBoundsException(
