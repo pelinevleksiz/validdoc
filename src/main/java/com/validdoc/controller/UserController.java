@@ -102,6 +102,7 @@ public class UserController {
     }
 
     @PutMapping("/me/password")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> changeOwnPassword(Authentication authentication,
                                                   @Valid @RequestBody ChangePasswordRequest request) {
         String username = authentication.getName();
