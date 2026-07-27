@@ -17,12 +17,12 @@ public class User {
     @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(nullable = false, length = 255)
-    private String email;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
+
+    @Column(nullable = false)
+    private boolean active = true;
 
     public User() {}
 
@@ -35,9 +35,9 @@ public class User {
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
 
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
     public UserRole getRole() { return role; }
     public void setRole(UserRole role) { this.role = role; }
+
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
 }

@@ -8,7 +8,11 @@ interface NavItem {
   roles?: string[]
 }
 
-const NAV_ITEMS: NavItem[] = [{ label: "Panel", path: "/dashboard" }]
+const NAV_ITEMS: NavItem[] = [
+  { label: "Panel", path: "/dashboard" },
+  { label: "Kullanıcılar", path: "/users", roles: ["ADMIN"] },
+  { label: "Şifre Değiştir", path: "/change-password", roles: ["ADMIN"] },
+]
 
 function NavSidebar() {
   const { role } = useAuth()

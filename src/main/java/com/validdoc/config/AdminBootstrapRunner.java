@@ -20,18 +20,15 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     private final PasswordEncoder passwordEncoder;
     private final String bootstrapUsername;
     private final String bootstrapPassword;
-    private final String bootstrapEmail;
 
     public AdminBootstrapRunner(UserRepository userRepository,
                                 PasswordEncoder passwordEncoder,
                                 @Value("${app.bootstrap-admin.username}") String bootstrapUsername,
-                                @Value("${app.bootstrap-admin.password}") String bootstrapPassword,
-                                @Value("${app.bootstrap-admin.email}") String bootstrapEmail) {
+                                @Value("${app.bootstrap-admin.password}") String bootstrapPassword) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.bootstrapUsername = bootstrapUsername;
         this.bootstrapPassword = bootstrapPassword;
-        this.bootstrapEmail = bootstrapEmail;
     }
 
     @Override
@@ -43,7 +40,6 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         User admin = new User();
         admin.setUsername(bootstrapUsername);
         admin.setPassword(passwordEncoder.encode(bootstrapPassword));
-        admin.setEmail(bootstrapEmail);
         admin.setRole(UserRole.ADMIN);
         userRepository.save(admin);
 

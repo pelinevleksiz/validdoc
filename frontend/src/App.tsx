@@ -1,6 +1,8 @@
 import { createBrowserRouter, RouterProvider } from "react-router"
 import Login from "@/pages/Login"
 import Dashboard from "@/pages/Dashboard"
+import Users from "@/pages/Users"
+import ChangePassword from "@/pages/ChangePassword"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AppLayout from "@/components/layout/AppLayout"
 
@@ -12,7 +14,25 @@ const router = createBrowserRouter([
         <AppLayout />
       </ProtectedRoute>
     ),
-    children: [{ path: "/dashboard", element: <Dashboard /> }],
+    children: [
+      { path: "/dashboard", element: <Dashboard /> },
+      {
+        path: "/users",
+        element: (
+          <ProtectedRoute allowedRoles={["ADMIN"]}>
+            <Users />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/change-password",
+        element: (
+          <ProtectedRoute allowedRoles={["ADMIN"]}>
+            <ChangePassword />
+          </ProtectedRoute>
+        ),
+      },
+    ],
   },
 ])
 

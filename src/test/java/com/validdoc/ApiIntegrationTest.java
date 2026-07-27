@@ -164,7 +164,6 @@ class ApiIntegrationTest {
         User admin = new User();
         admin.setUsername(ADMIN_USERNAME);
         admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
-        admin.setEmail(ADMIN_USERNAME + "@validdoc.local");
         admin.setRole(UserRole.ADMIN);
         userRepository.save(admin);
 
@@ -866,13 +865,21 @@ class ApiIntegrationTest {
 
     @Test
     @Order(41)
-    void cannotDeleteUserWithLinkedDocuments() throws Exception {
+    void adminCanDeactivateUserWithLinkedDocuments() throws Exception {
         User operatorUser = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
 
         mockMvc.perform(delete("/api/users/" + operatorUser.getId())
                         .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("USER_HAS_LINKED_DOCUMENTS"));
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     // Bu test tek admin kalmis senaryosunu, mevcut gercek admin hesaplarini kalici olarak

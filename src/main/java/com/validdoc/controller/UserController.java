@@ -10,7 +10,6 @@ import com.validdoc.model.AuditLog;
 import com.validdoc.model.User;
 import com.validdoc.model.enums.UserRole;
 import com.validdoc.repository.AuditLogRepository;
-import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.UserRepository;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -40,16 +39,13 @@ public class UserController {
     private static final Sort ALPHABETICAL = Sort.by(Sort.Direction.ASC, "username");
 
     private final UserRepository userRepository;
-    private final DocumentRepository documentRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogRepository auditLogRepository;
 
     public UserController(UserRepository userRepository,
-                          DocumentRepository documentRepository,
                           PasswordEncoder passwordEncoder,
                           AuditLogRepository auditLogRepository) {
         this.userRepository = userRepository;
-        this.documentRepository = documentRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogRepository = auditLogRepository;
     }
@@ -58,9 +54,9 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PagedResponse<UserSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
                                                                    @RequestParam(defaultValue = "20") int size) {
-        Page<User> result = userRepository.findAll(PageRequest.of(page, size, ALPHABETICAL));
+        Page<User> result = userRepository.findByActiveTrue(PageRequest.of(page, size, ALPHABETICAL));
         List<UserSummaryResponse> content = result.getContent().stream()
-                .map(u -> new UserSummaryResponse(u.getId(), u.getUsername(), u.getEmail(), u.getRole().name()))
+                .map(u -> new UserSummaryResponse(u.getId(), u.getUsername(), u.getRole().name()))
                 .toList();
 
         return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
@@ -72,13 +68,12 @@ public class UserController {
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setEmail(request.getEmail());
         user.setRole(request.getRole());
 
         user = userRepository.save(user);
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new UserSummaryResponse(user.getId(), user.getUsername(), user.getEmail(), user.getRole().name()));
+                .body(new UserSummaryResponse(user.getId(), user.getUsername(), user.getRole().name()));
     }
 
     @DeleteMapping("/{id}")
@@ -91,12 +86,9 @@ public class UserController {
             throw new ApiException(ErrorCode.CANNOT_DELETE_LAST_ADMIN);
         }
 
-        if (documentRepository.existsByUploadedBy(user) || documentRepository.existsByOperator(user)) {
-            throw new ApiException(ErrorCode.USER_HAS_LINKED_DOCUMENTS, user.getUsername());
-        }
-
-        userRepository.delete(user);
-        auditLogRepository.save(new AuditLog("USER_DELETED", authentication.getName()));
+        user.setActive(false);
+        userRepository.save(user);
+        auditLogRepository.save(new AuditLog("USER_DEACTIVATED", authentication.getName()));
 
         return ResponseEntity.noContent().build();
     }
