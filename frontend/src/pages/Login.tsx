@@ -39,7 +39,12 @@ function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
-  const [serverError, setServerError] = useState<string | null>(null)
+  const [serverError, setServerError] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get("expired") === "1"
+      ? "Oturumunuz sona erdi, lütfen tekrar giriş yapın."
+      : null
+  })
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),

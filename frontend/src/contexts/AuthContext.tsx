@@ -1,6 +1,19 @@
-import { createContext, useContext, useState, type ReactNode } from "react"
-import { saveSession, clearSession, getStoredRole, getStoredUsername } from "@/lib/auth"
-import { TOKEN_STORAGE_KEY } from "@/lib/api"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
+import {
+  saveSession,
+  clearSession,
+  getStoredRole,
+  getStoredUsername,
+  getStoredToken,
+  getTokenExpiryMs,
+} from "@/lib/auth"
 
 interface AuthState {
   token: string | null
@@ -12,12 +25,13 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: (token: string, role: string, username: string) => void
   logout: () => void
+  expiresAt: number | null
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 function getInitialState(): AuthState {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+  const token = getStoredToken()
   const role = getStoredRole()
   const username = getStoredUsername()
   return {
@@ -30,6 +44,7 @@ function getInitialState(): AuthState {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(getInitialState)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function login(token: string, role: string, username: string) {
     saveSession(token, role, username)
@@ -41,8 +56,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ token: null, role: null, username: null, isAuthenticated: false })
   }
 
+  const expiresAt = state.token ? getTokenExpiryMs(state.token) : null
+
+  useEffect(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (!state.token || !expiresAt) {
+      return
+    }
+
+    const msUntilExpiry = expiresAt - Date.now()
+
+    if (msUntilExpiry <= 0) {
+      clearSession()
+      window.location.href = "/?expired=1"
+      return
+    }
+
+    timerRef.current = setTimeout(() => {
+      clearSession()
+      window.location.href = "/?expired=1"
+    }, msUntilExpiry)
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
+    }
+  }, [state.token, expiresAt])
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout, expiresAt }}>
       {children}
     </AuthContext.Provider>
   )
