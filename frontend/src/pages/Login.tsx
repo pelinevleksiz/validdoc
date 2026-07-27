@@ -6,7 +6,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "react-router"
 import axios from "axios"
 import { api } from "@/lib/api"
-import { saveSession } from "@/lib/auth"
+import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -37,6 +37,7 @@ interface LoginResponse {
 
 function Login() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -51,7 +52,7 @@ function Login() {
       return res.data
     },
     onSuccess: (data, variables) => {
-      saveSession(data.token, data.role, variables.username)
+      login(data.token, data.role, variables.username)
       navigate("/dashboard")
     },
     onError: (error: unknown) => {
@@ -98,7 +99,6 @@ function Login() {
                       {...field}
                       id="login-username"
                       aria-invalid={fieldState.invalid}
-                      placeholder="ör. ad_soyad"
                       autoComplete="username"
                     />
                     {fieldState.invalid && (
