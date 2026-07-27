@@ -33,7 +33,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException e, Locale locale) {
-        return respond(e.getErrorCode(), locale, e.getArgs());
+        String message = messageSource.getMessage(e.getErrorCode().getMessageKey(), e.getArgs(), locale);
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(e.getErrorCode().getStatus());
+        if (e.getRetryAfterSeconds() != null) {
+            builder.header("Retry-After", String.valueOf(e.getRetryAfterSeconds()));
+        }
+        return builder.body(new ApiErrorResponse(
+                e.getErrorCode().name(), message, e.getRetryAfterSeconds(), e.getRemainingAttempts()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

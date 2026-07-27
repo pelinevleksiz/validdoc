@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,13 +39,22 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        if (!loginRateLimiter.tryConsume(request.getUsername())) {
-            throw new ApiException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS);
+        if (loginRateLimiter.isBlocked(request.getUsername())) {
+            throw tooManyAttempts(request.getUsername());
         }
 
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+            );
+        } catch (AuthenticationException e) {
+            loginRateLimiter.recordFailure(request.getUsername());
+            long remainingAttempts = loginRateLimiter.getRemainingAttempts(request.getUsername());
+            if (remainingAttempts <= 0) {
+                throw tooManyAttempts(request.getUsername());
+            }
+            throw ApiException.withRemainingAttempts(ErrorCode.BAD_CREDENTIALS, remainingAttempts);
+        }
 
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, request.getUsername()));
@@ -52,5 +62,11 @@ public class AuthController {
         String token = jwtService.generateToken(user.getUsername(), user.getRole());
 
         return ResponseEntity.ok(new AuthResponse(token, user.getRole().name()));
+    }
+
+    private ApiException tooManyAttempts(String username) {
+        long remainingMillis = loginRateLimiter.getRetryAfterMillis(username);
+        long retryAfterSeconds = (remainingMillis + 999) / 1000;
+        return new ApiException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, retryAfterSeconds);
     }
 }

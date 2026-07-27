@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -7,6 +7,7 @@ import { useNavigate } from "react-router"
 import axios from "axios"
 import { api } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
+import { getLanguage } from "@/lib/language"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -45,6 +46,21 @@ function Login() {
       ? "Oturumunuz sona erdi, lütfen tekrar giriş yapın."
       : null
   })
+  const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState<number | null>(null)
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (rateLimitSecondsLeft === null) return
+    if (rateLimitSecondsLeft <= 0) {
+      setRateLimitSecondsLeft(null)
+      setServerError(null)
+      return
+    }
+    const timeout = setTimeout(() => {
+      setRateLimitSecondsLeft((prev) => (prev === null ? null : prev - 1))
+    }, 1000)
+    return () => clearTimeout(timeout)
+  }, [rateLimitSecondsLeft])
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -61,6 +77,15 @@ function Login() {
       navigate("/dashboard")
     },
     onError: (error: unknown) => {
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        const retryAfter = error.response.data?.retryAfterSeconds
+        setRateLimitSecondsLeft(typeof retryAfter === "number" ? retryAfter : null)
+        setRemainingAttempts(null)
+      } else if (axios.isAxiosError(error) && error.response?.status === 401) {
+        const remaining = error.response.data?.remainingAttempts
+        setRemainingAttempts(typeof remaining === "number" ? remaining : null)
+      }
+
       if (axios.isAxiosError(error) && error.response?.data?.message) {
         setServerError(error.response.data.message)
       } else {
@@ -73,6 +98,11 @@ function Login() {
     setServerError(null)
     loginMutation.mutate(values)
   }
+
+  const isRateLimited = rateLimitSecondsLeft !== null && rateLimitSecondsLeft > 0
+  const showRemainingAttemptsWarning = remainingAttempts !== null && remainingAttempts <= 3
+  const remainingAttemptsLabel =
+    getLanguage() === "en" ? "Remaining attempts" : "Kalan deneme hakkı"
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -89,6 +119,11 @@ function Login() {
           {serverError && (
             <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {serverError}
+              {showRemainingAttemptsWarning && (
+                <div className="mt-1 text-xs">
+                  {remainingAttemptsLabel}: {remainingAttempts}
+                </div>
+              )}
             </div>
           )}
 
@@ -142,8 +177,16 @@ function Login() {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
-                {loginMutation.isPending ? "Giriş yapılıyor..." : "Giriş"}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loginMutation.isPending || isRateLimited}
+              >
+                {isRateLimited
+                  ? `${rateLimitSecondsLeft}sn`
+                  : loginMutation.isPending
+                    ? "Giriş yapılıyor..."
+                    : "Giriş"}
               </Button>
             </FieldGroup>
           </form>

@@ -432,7 +432,7 @@ class ApiIntegrationTest {
     @Test
     @Order(19)
     void loginRateLimiterBlocksAfterFiveAttempts() throws Exception {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4; i++) {
             mockMvc.perform(post("/api/auth/login")
                             .with(request -> {
                                 request.setRemoteAddr(RATE_LIMIT_TEST_REMOTE_ADDR);
