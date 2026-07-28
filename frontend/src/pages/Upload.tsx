@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import belgeYukleTitle from "@/assets/belge-yukle-title.png"
+import { Link } from "react-router"
 
 interface TemplateSummary {
   id: number
@@ -310,7 +311,10 @@ function Upload() {
       {step === "done" && statusData && (
         <div className="flex h-64 flex-col items-center justify-center gap-4">
           <p className="text-lg font-medium">{STATUS_LABELS[statusData.status] ?? statusData.status}</p>
-          <Button onClick={reset}>Yeni belge yükle</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" render={<Link to={`/documents/${statusData.id}`}>Belgeyi görüntüle</Link>} />
+            <Button onClick={reset}>Yeni belge yükle</Button>
+          </div>
         </div>
       )}
     </div>
