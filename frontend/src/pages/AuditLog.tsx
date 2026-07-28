@@ -59,7 +59,7 @@ function AuditLog() {
 
   return (
     <div>
-      <img src={auditLogTitle} alt="Denetim kayıtları" className="mb-4 h-7 w-auto" />
+      <img src={auditLogTitle} alt="Denetim kayıtları" className="mb-4 h-7.25 w-auto" />
 
       {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
       {isError && <p className="text-destructive">Kayıtlar yüklenemedi.</p>}
