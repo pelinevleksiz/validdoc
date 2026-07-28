@@ -1,6 +1,7 @@
 import { NavLink } from "react-router"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
+import validdocWordmark from "@/assets/validdoc-wordmark.png"
 
 interface NavItem {
   label: string
@@ -24,7 +25,7 @@ function NavSidebar() {
 
   return (
     <aside className="w-56 border-r p-4">
-      <div className="mb-6 text-lg font-semibold">validdoc</div>
+      <img src={validdocWordmark} alt="validdoc" className="mb-6 block h-auto w-full" />
       <nav className="flex flex-col gap-1">
         {visibleItems.map((item) => (
           <NavLink

@@ -1,7 +1,9 @@
+import panelTitle from "@/assets/panel-title.png"
+
 function Dashboard() {
   return (
     <div>
-      <h1 className="text-2xl font-bold">Panel</h1>
+      <img src={panelTitle} alt="Panel" className="mb-4 h-[27px] w-auto" />
       <p className="text-muted-foreground">Bu sayfa henüz yapım aşamasında.</p>
     </div>
   )

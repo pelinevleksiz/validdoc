@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import templatesTitle from "@/assets/sablonlar-title.png"
 
 interface TemplateSummary {
   id: number
@@ -77,8 +78,8 @@ function Templates() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Şablonlar</h1>
-        <Button render={<Link to="/templates/new">Yeni şablon</Link>} />
+        <img src={templatesTitle} alt="Şablonlar" className="h-[27px] w-auto" />
+        <Button render={<Link to="/templates/new">Şablon ekle</Link>} />
       </div>
 
       {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}

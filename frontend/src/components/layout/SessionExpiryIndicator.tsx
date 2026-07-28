@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
+import { Clock } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
+import { cn } from "@/lib/utils"
 
 function formatRemaining(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -11,6 +13,7 @@ function formatRemaining(ms: number) {
 function SessionExpiryIndicator() {
   const { expiresAt } = useAuth()
   const [now, setNow] = useState(Date.now())
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000)
@@ -22,9 +25,24 @@ function SessionExpiryIndicator() {
   }
 
   return (
-    <span className="text-xs text-muted-foreground">
-      Oturum: {formatRemaining(expiresAt - now)}
-    </span>
+    <button
+      type="button"
+      onClick={() => setExpanded((prev) => !prev)}
+      className={cn(
+        "flex h-8 items-center gap-1.5 overflow-hidden rounded-md border bg-background px-2 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
+        expanded ? "w-20" : "w-8"
+      )}
+    >
+      <Clock className="h-4 w-4 shrink-0" />
+      <span
+        className={cn(
+          "whitespace-nowrap text-sm font-medium transition-opacity duration-200",
+          expanded ? "opacity-100" : "opacity-0"
+        )}
+      >
+        {formatRemaining(expiresAt - now)}
+      </span>
+    </button>
   )
 }
 

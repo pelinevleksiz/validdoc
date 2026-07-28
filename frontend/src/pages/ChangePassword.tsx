@@ -12,7 +12,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import {
   Field,
@@ -20,6 +19,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import changePasswordTitle from "@/assets/sifre-degistir-title.png"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Mevcut şifre zorunlu"),
@@ -65,7 +65,7 @@ function ChangePassword() {
   return (
     <Card className="max-w-sm">
       <CardHeader>
-        <CardTitle>Şifre değiştir</CardTitle>
+        <img src={changePasswordTitle} alt="Şifre değiştir" className="mb-1 h-[33px] w-auto" />
         <CardDescription>Kendi hesabının şifresini güncelle.</CardDescription>
       </CardHeader>
       <CardContent>

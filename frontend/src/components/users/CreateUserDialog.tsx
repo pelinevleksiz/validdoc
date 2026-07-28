@@ -72,7 +72,7 @@ function CreateUserDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Yeni kullanıcı</Button>} />
+      <DialogTrigger render={<Button>Kullanıcı ekle</Button>} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Yeni kullanıcı oluştur</DialogTitle>

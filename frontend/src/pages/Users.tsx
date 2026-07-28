@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import CreateUserDialog from "@/components/users/CreateUserDialog"
+import usersTitle from "@/assets/kullanicilar-title.png"
 
 export interface UserSummary {
   id: number
@@ -79,7 +80,7 @@ function Users() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Kullanıcılar</h1>
+        <img src={usersTitle} alt="Kullanıcılar" className="h-[27px] w-auto" />
         <CreateUserDialog />
       </div>
 
