@@ -96,6 +96,7 @@ function TemplateNew() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [segments, setSegments] = useState<DraftSegment[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [drawStart, setDrawStart] = useState<Point | null>(null)
   const [drawCurrent, setDrawCurrent] = useState<Point | null>(null)
@@ -157,10 +158,7 @@ function TemplateNew() {
     setSource(canvas)
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  async function processFile(file: File) {
     if (file.type === "application/pdf") {
       setFileKind("pdf")
       const arrayBuffer = await file.arrayBuffer()
@@ -182,6 +180,12 @@ function TemplateNew() {
       img.src = reader.result as string
     }
     reader.readAsDataURL(file)
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processFile(file)
   }
 
   function goToPdfPage(pageNumber: number) {
@@ -523,10 +527,28 @@ function TemplateNew() {
         <div style={{ width: DISPLAY_WIDTH }}>
           {!source && (
             <div
-              className="flex flex-col items-center justify-center gap-3 rounded-md border border-dashed"
+              onDragOver={(e) => {
+                e.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+                const dropped = e.dataTransfer.files?.[0]
+                if (dropped) processFile(dropped)
+              }}
+              className={`flex flex-col items-center justify-center gap-3 rounded-md border border-dashed transition-colors ${
+                isDragging ? "border-primary bg-primary/5" : ""
+              }`}
               style={{ height: displayHeight }}
             >
-              <p className="text-sm text-muted-foreground">Örnek belge yükle (PNG, JPEG veya PDF)</p>
+              <p className="text-sm text-muted-foreground">
+                {isDragging ? "Bırak..." : "Örnek belge yükle (PNG, JPEG veya PDF) — sürükleyin ya da seçin"}
+              </p>
               <Button onClick={() => fileInputRef.current?.click()}>Dosya seç</Button>
               <input
                 ref={fileInputRef}

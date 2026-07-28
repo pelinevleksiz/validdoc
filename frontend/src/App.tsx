@@ -7,6 +7,7 @@ import Templates from "@/pages/Templates"
 import TemplateNew from "@/pages/TemplateNew"
 import Settings from "@/pages/Settings"
 import AuditLog from "@/pages/AuditLog"
+import Upload from "@/pages/Upload"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AppLayout from "@/components/layout/AppLayout"
 
@@ -20,6 +21,7 @@ const router = createBrowserRouter([
     ),
     children: [
       { path: "/dashboard", element: <Dashboard /> },
+      { path: "/upload", element: <Upload /> },
       {
         path: "/users",
         element: (
