@@ -65,7 +65,7 @@ function ChangePassword() {
   return (
     <Card className="max-w-sm">
       <CardHeader>
-        <img src={changePasswordTitle} alt="Şifre değiştir" className="mb-1 h-[33px] w-auto" />
+        <img src={changePasswordTitle} alt="Şifre değiştir" className="mb-1 h-8.25 w-auto" />
         <CardDescription>Kendi hesabının şifresini güncelle.</CardDescription>
       </CardHeader>
       <CardContent>

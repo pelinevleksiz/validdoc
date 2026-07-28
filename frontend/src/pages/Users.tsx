@@ -80,7 +80,7 @@ function Users() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <img src={usersTitle} alt="Kullanıcılar" className="h-[27px] w-auto" />
+        <img src={usersTitle} alt="Kullanıcılar" className="h-6.75 w-auto" />
         <CreateUserDialog />
       </div>
 

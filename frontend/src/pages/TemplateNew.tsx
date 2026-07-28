@@ -2,7 +2,8 @@ import { useRef, useState } from "react"
 import { Stage, Layer, Image as KonvaImage, Rect, Text } from "react-konva"
 import * as pdfjsLib from "pdfjs-dist"
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "react-router"
 import axios from "axios"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,8 @@ interface PreviewResult {
 }
 
 function TemplateNew() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [templateName, setTemplateName] = useState("")
   const [fileKind, setFileKind] = useState<"image" | "pdf" | null>(null)
   const [source, setSource] = useState<CanvasSource | null>(null)
@@ -406,7 +409,42 @@ function TemplateNew() {
     },
   })
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post("/api/templates", {
+        name: templateName.trim(),
+        segments: segments.map((s) => ({
+          label: s.label,
+          page: s.page,
+          x: s.x,
+          y: s.y,
+          w: s.w,
+          h: s.h,
+          rules: s.rules.map((r) => ({ type: r.type, param: r.param })),
+        })),
+      })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["templates"] })
+      navigate("/templates")
+    },
+    onError: (error: unknown) => {
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
+        setSaveError(error.response.data.message)
+      } else {
+        setSaveError("Şablon kaydedilemedi.")
+      }
+    },
+  })
+
+  const hasSegmentWithoutRules = segments.some((s) => s.rules.length === 0)
+  const canSave = templateName.trim().length > 0 && segments.length > 0 && !hasSegmentWithoutRules
+
   const visibleSegments = segments.filter((s) => s.page === currentPage)
+
   const previewRect =
     drawStart && drawCurrent
       ? {
@@ -419,7 +457,7 @@ function TemplateNew() {
 
   return (
     <div>
-      <img src={createTemplateTitle} alt="Şablon oluştur" className="mb-4 h-[27px] w-auto" />
+      <img src={createTemplateTitle} alt="Şablon oluştur" className="mb-4 h-6.75 w-auto" />
 
       <Field className="mb-4 max-w-sm">
         <FieldLabel htmlFor="template-name">Şablon adı</FieldLabel>
@@ -628,6 +666,28 @@ function TemplateNew() {
             {isDrawingMode ? "Belge üzerinde çizin..." : "Segment ekle"}
           </Button>
         </div>
+      </div>
+
+      <div className="mt-4" style={{ width: DISPLAY_WIDTH + 16 + 256 }}>
+        {saveError && (
+          <div className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {saveError}
+          </div>
+        )}
+        {!canSave && segments.length > 0 && (
+          <p className="mb-2 text-xs text-muted-foreground">
+            {hasSegmentWithoutRules
+              ? "Kaydetmeden önce her segmente en az bir kural atamalısın."
+              : "Şablon adını girmelisin."}
+          </p>
+        )}
+        <Button
+          className="w-full"
+          onClick={() => saveMutation.mutate()}
+          disabled={!canSave || saveMutation.isPending}
+        >
+          {saveMutation.isPending ? "Kaydediliyor..." : "Şablonu kaydet"}
+        </Button>
       </div>
 
       <Dialog open={pendingSegment !== null} onOpenChange={(open) => !open && cancelPendingSegment()}>

@@ -78,7 +78,7 @@ function Templates() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <img src={templatesTitle} alt="Şablonlar" className="h-[27px] w-auto" />
+        <img src={templatesTitle} alt="Şablonlar" className="h-6.75 w-auto" />
         <Button render={<Link to="/templates/new">Şablon ekle</Link>} />
       </div>
 

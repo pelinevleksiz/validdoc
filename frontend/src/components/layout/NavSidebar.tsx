@@ -13,6 +13,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Panel", path: "/dashboard" },
   { label: "Şablonlar", path: "/templates", roles: ["ADMIN"] },
   { label: "Kullanıcılar", path: "/users", roles: ["ADMIN"] },
+  { label: "Denetim Kayıtları", path: "/audit-logs", roles: ["ADMIN"] },
+  { label: "Doğrulama Ayarları", path: "/settings", roles: ["ADMIN"] },
   { label: "Şifre Değiştir", path: "/change-password", roles: ["ADMIN"] },
 ]
 
