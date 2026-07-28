@@ -10,6 +10,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Panel", path: "/dashboard" },
+  { label: "Şablonlar", path: "/templates", roles: ["ADMIN"] },
   { label: "Kullanıcılar", path: "/users", roles: ["ADMIN"] },
   { label: "Şifre Değiştir", path: "/change-password", roles: ["ADMIN"] },
 ]

@@ -3,6 +3,7 @@ import Login from "@/pages/Login"
 import Dashboard from "@/pages/Dashboard"
 import Users from "@/pages/Users"
 import ChangePassword from "@/pages/ChangePassword"
+import Templates from "@/pages/Templates"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AppLayout from "@/components/layout/AppLayout"
 
@@ -29,6 +30,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={["ADMIN"]}>
             <ChangePassword />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "/templates",
+        element: (
+          <ProtectedRoute allowedRoles={["ADMIN"]}>
+            <Templates />
           </ProtectedRoute>
         ),
       },
