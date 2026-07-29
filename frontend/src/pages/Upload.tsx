@@ -574,7 +574,9 @@ function Upload() {
               <h2 className="mb-2 text-lg font-semibold">{currentPendingSegment.label}</h2>
 
               {currentPendingSegment.reason && (
-                <p className="mb-1 text-sm text-muted-foreground">{currentPendingSegment.reason}</p>
+                <div className="mb-3 rounded-md bg-orange-500/10 px-3 py-2 text-sm font-medium text-orange-700">
+                  {currentPendingSegment.reason}
+                </div>
               )}
 
               {currentTemplateSegment && currentTemplateSegment.rules.length > 0 && (

@@ -222,7 +222,9 @@ function ReviewQueue() {
           <h2 className="mb-2 text-lg font-semibold">{currentSegment.label}</h2>
 
           {currentSegment.reason && (
-            <p className="mb-1 text-sm text-muted-foreground">{currentSegment.reason}</p>
+            <div className="mb-3 rounded-md bg-orange-500/10 px-3 py-2 text-sm font-medium text-orange-700">
+              {currentSegment.reason}
+            </div>
           )}
 
           {templateSegment && templateSegment.rules.length > 0 && (
