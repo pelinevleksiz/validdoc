@@ -12,6 +12,7 @@ import com.validdoc.model.Template;
 import com.validdoc.model.User;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.enums.UserRole;
 import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.SegmentImageRepository;
@@ -96,7 +97,7 @@ public class DocumentController {
             throw new ApiException(ErrorCode.UNSUPPORTED_FILE_TYPE);
         }
 
-        User uploader = userRepository.findByUsername(authentication.getName())
+        User uploader = userRepository.findByUsernameAndActiveTrue(authentication.getName())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
 
         Template template = templateRepository.findById(templateId)
@@ -124,8 +125,15 @@ public class DocumentController {
     @GetMapping
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<PagedResponse<DocumentSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
-                                                                       @RequestParam(defaultValue = "20") int size) {
-        Page<DocumentMetadata> result = documentRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, size));
+                                                                       @RequestParam(defaultValue = "20") int size,
+                                                                       Authentication authentication) {
+        User currentUser = userRepository.findByUsernameAndActiveTrue(authentication.getName())
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
+
+        Page<DocumentMetadata> result = currentUser.getRole() == UserRole.ADMIN
+                ? documentRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, size))
+                : documentRepository.findByUploadedByOrderByUploadedAtDesc(currentUser, PageRequest.of(page, size));
+
         List<DocumentSummaryResponse> content = result.getContent().stream().map(this::toSummary).toList();
         return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
     }
@@ -153,7 +161,7 @@ public class DocumentController {
     }
 
     @PostMapping("/{id}/segments/{segmentId}/resolve")
-    @PreAuthorize("hasRole('OPERATOR')")
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<DocumentSummaryResponse> resolveSegment(@PathVariable Long id,
                                                                   @PathVariable Long segmentId,
                                                                   @Valid @RequestBody SegmentResolveRequest request,
@@ -172,7 +180,7 @@ public class DocumentController {
     }
 
     @PostMapping("/{id}/verify")
-    @PreAuthorize("hasRole('OPERATOR')")
+    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<Map<String, String>> verify(@PathVariable Long id,
                                                       @Valid @RequestBody VerificationRequest request,
                                                       Authentication authentication,
@@ -187,7 +195,7 @@ public class DocumentController {
         DocumentMetadata document = documentRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
 
-        User operator = userRepository.findByUsername(authentication.getName())
+        User operator = userRepository.findByUsernameAndActiveTrue(authentication.getName())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
 
         document.setStatus(target);

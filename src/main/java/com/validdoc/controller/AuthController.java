@@ -56,7 +56,7 @@ public class AuthController {
             throw ApiException.withRemainingAttempts(ErrorCode.BAD_CREDENTIALS, remainingAttempts);
         }
 
-        User user = userRepository.findByUsername(request.getUsername())
+        User user = userRepository.findByUsernameAndActiveTrue(request.getUsername())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, request.getUsername()));
 
         String token = jwtService.generateToken(user.getUsername(), user.getRole());

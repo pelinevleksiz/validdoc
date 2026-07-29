@@ -2,6 +2,7 @@ package com.validdoc.repository;
 
 import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.enums.DocumentStatus;
+import com.validdoc.model.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,4 +20,10 @@ public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long
     List<DocumentMetadata> findByStatusAndProcessedAtLessThan(DocumentStatus status, LocalDateTime cutoff);
 
     Page<DocumentMetadata> findAllByOrderByUploadedAtDesc(Pageable pageable);
+
+    Page<DocumentMetadata> findByUploadedByOrderByUploadedAtDesc(User uploadedBy, Pageable pageable);
+
+    boolean existsByUploadedBy(User uploadedBy);
+
+    boolean existsByOperator(User operator);
 }

@@ -82,7 +82,7 @@ public class UserController {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, String.valueOf(id)));
 
-        if (user.getRole() == UserRole.ADMIN && userRepository.countByRole(UserRole.ADMIN) <= 1) {
+        if (user.getRole() == UserRole.ADMIN && userRepository.countByRoleAndActiveTrue(UserRole.ADMIN) <= 1) {
             throw new ApiException(ErrorCode.CANNOT_DELETE_LAST_ADMIN);
         }
 
@@ -98,7 +98,7 @@ public class UserController {
     public ResponseEntity<Void> changeOwnPassword(Authentication authentication,
                                                   @Valid @RequestBody ChangePasswordRequest request) {
         String username = authentication.getName();
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameAndActiveTrue(username)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, username));
 
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {

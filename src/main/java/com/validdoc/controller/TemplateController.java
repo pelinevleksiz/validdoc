@@ -14,13 +14,11 @@ import com.validdoc.dto.response.TemplateSegmentDetailResponse;
 import com.validdoc.dto.response.TemplateSummaryResponse;
 import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
-import com.validdoc.model.AuditLog;
 import com.validdoc.model.SegmentRule;
 import com.validdoc.model.Template;
 import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
-import com.validdoc.repository.AuditLogRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.service.FileSignatureValidator;
 import com.validdoc.service.TemplatePreviewService;
@@ -32,7 +30,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -53,16 +50,13 @@ public class TemplateController {
 
     private final TemplateRepository templateRepository;
     private final TemplatePreviewService templatePreviewService;
-    private final AuditLogRepository auditLogRepository;
     private final JsonMapper jsonMapper;
 
     public TemplateController(TemplateRepository templateRepository,
                               TemplatePreviewService templatePreviewService,
-                              AuditLogRepository auditLogRepository,
                               JsonMapper jsonMapper) {
         this.templateRepository = templateRepository;
         this.templatePreviewService = templatePreviewService;
-        this.auditLogRepository = auditLogRepository;
         this.jsonMapper = jsonMapper;
     }
 
@@ -70,7 +64,7 @@ public class TemplateController {
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<PagedResponse<TemplateSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
                                                                        @RequestParam(defaultValue = "20") int size) {
-        Page<Template> result = templateRepository.findByActiveTrue(PageRequest.of(page, size));
+        Page<Template> result = templateRepository.findAll(PageRequest.of(page, size));
         List<TemplateSummaryResponse> content = result.getContent().stream()
                 .map(t -> new TemplateSummaryResponse(t.getId(), t.getName()))
                 .toList();
@@ -109,6 +103,7 @@ public class TemplateController {
 
         Template template = new Template();
         template.setName(request.getName());
+        template.setPageCount(request.getPageCount());
 
         for (TemplateSegmentRequest segmentReq : request.getSegments()) {
             TemplateSegment segment = new TemplateSegment();
@@ -133,19 +128,6 @@ public class TemplateController {
         template = templateRepository.save(template);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", template.getId()));
-    }
-
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
-        Template template = templateRepository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(id)));
-
-        template.setActive(false);
-        templateRepository.save(template);
-        auditLogRepository.save(new AuditLog("TEMPLATE_DEACTIVATED", authentication.getName()));
-
-        return ResponseEntity.noContent().build();
     }
 
     @PostMapping(value = "/preview", consumes = "multipart/form-data")
@@ -195,7 +177,7 @@ public class TemplateController {
                                 .map(rule -> new SegmentRuleDetailResponse(rule.getRuleType().name(), rule.getParam()))
                                 .toList()))
                 .toList();
-        return new TemplateDetailResponse(template.getId(), template.getName(), segments);
+        return new TemplateDetailResponse(template.getId(), template.getName(), template.getPageCount(), segments);
     }
 
     private void validateSegmentCoordinates(String label, double x, double y, double w, double h) {

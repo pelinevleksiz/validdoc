@@ -797,7 +797,7 @@ class ApiIntegrationTest {
     @Test
     @Order(37)
     void abandonedPendingReviewDocumentAutoExpiresToRejectedInvalid() throws Exception {
-        User uploader = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
+        User uploader = userRepository.findByUsernameAndActiveTrue(OPERATOR_USERNAME).orElseThrow();
         Template template = templateRepository.findById(createdTemplateId).orElseThrow();
 
         DocumentMetadata abandoned = new DocumentMetadata();
@@ -866,7 +866,7 @@ class ApiIntegrationTest {
     @Test
     @Order(41)
     void adminCanDeactivateUserWithLinkedDocuments() throws Exception {
-        User operatorUser = userRepository.findByUsername(OPERATOR_USERNAME).orElseThrow();
+        User operatorUser = userRepository.findByUsernameAndActiveTrue(OPERATOR_USERNAME).orElseThrow();
 
         mockMvc.perform(delete("/api/users/" + operatorUser.getId())
                         .header("Authorization", "Bearer " + adminToken))
@@ -890,15 +890,18 @@ class ApiIntegrationTest {
     @Order(42)
     @Transactional
     void cannotDeleteLastRemainingAdmin() throws Exception {
-        User self = userRepository.findByUsername(ADMIN_USERNAME).orElseThrow();
+        User self = userRepository.findByUsernameAndActiveTrue(ADMIN_USERNAME).orElseThrow();
 
         List<User> otherAdmins = userRepository.findAll().stream()
                 .filter(u -> u.getRole() == UserRole.ADMIN)
                 .filter(u -> !u.getId().equals(self.getId()))
                 .toList();
-        userRepository.deleteAll(otherAdmins);
+        otherAdmins.forEach(admin -> {
+            admin.setActive(false);
+            userRepository.save(admin);
+        });
 
-        assertEquals(1L, userRepository.countByRole(UserRole.ADMIN),
+        assertEquals(1L, userRepository.countByRoleAndActiveTrue(UserRole.ADMIN),
                 "Test setup tek admin birakmadi, once diger adminler silinmeliydi");
 
         mockMvc.perform(delete("/api/users/" + self.getId())

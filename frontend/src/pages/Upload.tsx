@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react"
+import { Link } from "react-router"
 import axios from "axios"
 import { useMutation, useQuery } from "@tanstack/react-query"
+import * as pdfjsLib from "pdfjs-dist"
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import belgeYukleTitle from "@/assets/belge-yukle-title.png"
-import { Link } from "react-router"
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 interface TemplateSummary {
   id: number
@@ -20,17 +24,68 @@ interface PagedResponse<T> {
   totalPages: number
 }
 
+interface TemplateSegmentDetail {
+  id: number
+  label: string
+  page: number
+  rules: { type: string; param?: number }[]
+}
+
+interface TemplateDetail {
+  id: number
+  name: string
+  pageCount: number
+  segments: TemplateSegmentDetail[]
+}
+
+interface SegmentResult {
+  segmentId: number
+  label: string
+  outcome: string
+}
+
 interface DocumentStatusData {
   id: number
   fileName: string
   status: "PROCESSING" | "PENDING_REVIEW" | "VALIDATED" | "REJECTED_EMPTY" | "REJECTED_INVALID"
+  segmentResults: string | null
+}
+
+interface PendingFile {
+  file: File
+  pageCount: number
+}
+
+interface UploadJob {
+  file: File
+  documentId: number | null
+  status: DocumentStatusData["status"] | "ERROR"
+  segmentResults: string | null
+  errorMessage: string | null
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  PROCESSING: "İşleniyor",
   PENDING_REVIEW: "İnceleme bekliyor",
   VALIDATED: "Onaylandı",
   REJECTED_EMPTY: "Boş belge olarak reddedildi",
   REJECTED_INVALID: "Geçersiz olarak reddedildi",
+  ERROR: "Yükleme başarısız",
+}
+
+const RULE_LABELS: Record<string, string> = {
+  LETTERS_ONLY: "Yalnızca harf",
+  DIGITS_ONLY: "Yalnızca rakam",
+  ALPHANUMERIC: "Harf ve rakam",
+  DATE: "Tarih",
+  MIN_LENGTH: "Minimum uzunluk",
+  MAX_LENGTH: "Maksimum uzunluk",
+  TC_KIMLIK_NO: "TC Kimlik No",
+  VKN: "Vergi Kimlik No (VKN)",
+  PHONE_TR: "Telefon (TR)",
+  EMAIL: "E-posta",
+  SIGNATURE_INK: "İmza",
+  STAMP_INK: "Mühür",
 }
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "application/pdf"]
@@ -95,15 +150,24 @@ function StepIndicator({ currentStep, isComplete }: { currentStep: 1 | 2 | 3; is
   )
 }
 
+async function getFilePageCount(file: File): Promise<number> {
+  if (file.type !== "application/pdf") return 1
+  const buf = await file.arrayBuffer()
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise
+  return doc.numPages
+}
+
 function Upload() {
   const [step, setStep] = useState<Step>("file")
-  const [file, setFile] = useState<File | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [language, setLanguage] = useState<"tur" | "eng">("tur")
-  const [documentId, setDocumentId] = useState<number | null>(null)
-  const [statusData, setStatusData] = useState<DocumentStatusData | null>(null)
+  const [jobs, setJobs] = useState<UploadJob[]>([])
+  const [expandedJobIndex, setExpandedJobIndex] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [resolveError, setResolveError] = useState<string | null>(null)
+  const [segmentImageUrl, setSegmentImageUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const { data: templates, isLoading: templatesLoading } = useQuery({
@@ -115,57 +179,52 @@ function Upload() {
     enabled: step === "template",
   })
 
-  const uploadMutation = useMutation({
-    mutationFn: async () => {
-      if (!file || !selectedTemplateId) throw new Error("Eksik bilgi")
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await api.post<{ id: number; status: string }>(
-        `/api/documents/upload?templateId=${selectedTemplateId}&lang=${language}`,
-        formData
-      )
+  const { data: templateDetail } = useQuery({
+    queryKey: ["template-detail-for-upload", selectedTemplateId],
+    queryFn: async () => {
+      const res = await api.get<TemplateDetail>(`/api/templates/${selectedTemplateId}`)
       return res.data
     },
-    onSuccess: (data) => {
-      setDocumentId(data.id)
-      setStatusData({ id: data.id, fileName: file?.name ?? "", status: "PROCESSING" })
-      setStep("processing")
-    },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setUploadError(error.response.data.message)
-      } else {
-        setUploadError("Yükleme başarısız oldu.")
-      }
-    },
+    enabled: selectedTemplateId !== null,
   })
 
-  useEffect(() => {
-    if (!documentId || !statusData || statusData.status !== "PROCESSING") return
-    const timer = setTimeout(async () => {
-      const res = await api.get<DocumentStatusData>(`/api/documents/${documentId}`)
-      setStatusData(res.data)
-      if (res.data.status !== "PROCESSING") {
-        setStep("done")
-      }
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [documentId, statusData])
+  const templateMaxPage = templateDetail ? templateDetail.pageCount : null
 
-  function processFile(selected: File) {
-    if (!ACCEPTED_TYPES.includes(selected.type)) {
+  const mismatchedFiles = pendingFiles.filter(
+    (pf) => templateMaxPage !== null && pf.pageCount !== templateMaxPage
+  )
+
+  async function addFiles(newFiles: File[]) {
+    const invalid = newFiles.find((f) => !ACCEPTED_TYPES.includes(f.type))
+    if (invalid) {
       setUploadError("Sadece PDF, PNG veya JPEG dosyaları desteklenir.")
       return
     }
-    setUploadError(null)
-    setFile(selected)
+
+    const isDuplicate = (file: File) =>
+      pendingFiles.some((pf) => pf.file.name === file.name && pf.file.size === file.size)
+    const uniqueNewFiles = newFiles.filter((f) => !isDuplicate(f))
+
+    setUploadError(
+      uniqueNewFiles.length < newFiles.length ? "Bazı dosyalar zaten listede olduğu için tekrar eklenmedi." : null
+    )
+
+    const withPageCounts = await Promise.all(
+      uniqueNewFiles.map(async (file) => ({ file, pageCount: await getFilePageCount(file) }))
+    )
+    setPendingFiles((prev) => [...prev, ...withPageCounts])
     setStep("template")
   }
 
+  function removeFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = e.target.files?.[0]
-    if (!selected) return
-    processFile(selected)
+    const selected = e.target.files
+    if (!selected || selected.length === 0) return
+    addFiles(Array.from(selected))
+    e.target.value = ""
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
@@ -181,31 +240,149 @@ function Upload() {
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault()
     setIsDragging(false)
-    const dropped = e.dataTransfer.files?.[0]
-    if (!dropped) return
-    processFile(dropped)
+    const dropped = e.dataTransfer.files
+    if (!dropped || dropped.length === 0) return
+    addFiles(Array.from(dropped))
   }
 
-  function handleUpload() {
-    setUploadError(null)
-    uploadMutation.mutate()
-  }
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      const validFiles = pendingFiles.filter((pf) => !mismatchedFiles.includes(pf))
+      const initialJobs: UploadJob[] = validFiles.map((pf) => ({
+        file: pf.file,
+        documentId: null,
+        status: "PROCESSING",
+        segmentResults: null,
+        errorMessage: null,
+      }))
+      setJobs(initialJobs)
+      setStep("processing")
+
+      for (let i = 0; i < validFiles.length; i++) {
+        try {
+          const formData = new FormData()
+          formData.append("file", validFiles[i].file)
+          const res = await api.post<{ id: number; status: string }>(
+            `/api/documents/upload?templateId=${selectedTemplateId}&lang=${language}`,
+            formData
+          )
+          setJobs((prev) =>
+            prev.map((job, idx) => (idx === i ? { ...job, documentId: res.data.id } : job))
+          )
+        } catch (error) {
+          const message =
+            axios.isAxiosError(error) && error.response?.data?.message
+              ? error.response.data.message
+              : "Yükleme başarısız oldu."
+          setJobs((prev) =>
+            prev.map((job, idx) => (idx === i ? { ...job, status: "ERROR", errorMessage: message } : job))
+          )
+        }
+      }
+      setStep("done")
+    },
+  })
+
+  useEffect(() => {
+    const stillProcessing = jobs.some((j) => j.status === "PROCESSING" && j.documentId !== null)
+    if (!stillProcessing) return
+    const timer = setTimeout(async () => {
+      const updated = await Promise.all(
+        jobs.map(async (job) => {
+          if (job.status !== "PROCESSING" || job.documentId === null) return job
+          const res = await api.get<DocumentStatusData>(`/api/documents/${job.documentId}`)
+          return { ...job, status: res.data.status, segmentResults: res.data.segmentResults }
+        })
+      )
+      setJobs(updated)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [jobs])
+
+  const expandedJob = expandedJobIndex !== null ? jobs[expandedJobIndex] : null
+  const expandedResults: SegmentResult[] = expandedJob?.segmentResults
+    ? JSON.parse(expandedJob.segmentResults)
+    : []
+  const expandedPending = expandedResults.filter((r) => r.outcome === "PENDING_REVIEW")
+  const currentPendingSegment = expandedPending[0] ?? null
+  const currentTemplateSegment = templateDetail?.segments.find((s) => s.id === currentPendingSegment?.segmentId)
+
+  useEffect(() => {
+    if (!expandedJob?.documentId || !currentPendingSegment) {
+      setSegmentImageUrl(null)
+      return
+    }
+    let objectUrl: string | null = null
+    api
+      .get(`/api/documents/${expandedJob.documentId}/segments/${currentPendingSegment.segmentId}/image`, {
+        responseType: "blob",
+      })
+      .then((res) => {
+        objectUrl = URL.createObjectURL(res.data)
+        setSegmentImageUrl(objectUrl)
+      })
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [expandedJob?.documentId, currentPendingSegment?.segmentId])
+
+  const resolveMutation = useMutation({
+    mutationFn: async (outcome: "FILLED_VALID" | "FILLED_INVALID") => {
+      if (!expandedJob?.documentId || !currentPendingSegment || expandedJobIndex === null) return
+      await api.post(
+        `/api/documents/${expandedJob.documentId}/segments/${currentPendingSegment.segmentId}/resolve`,
+        { outcome }
+      )
+      const res = await api.get<DocumentStatusData>(`/api/documents/${expandedJob.documentId}`)
+      setJobs((prev) =>
+        prev.map((job, idx) =>
+          idx === expandedJobIndex
+            ? { ...job, status: res.data.status, segmentResults: res.data.segmentResults }
+            : job
+        )
+      )
+    },
+    onSuccess: () => setResolveError(null),
+    onError: () => setResolveError("İşlem başarısız oldu."),
+  })
+
+  useEffect(() => {
+    if (!currentPendingSegment || resolveMutation.isPending) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === "v") resolveMutation.mutate("FILLED_VALID")
+      if (e.key.toLowerCase() === "i") resolveMutation.mutate("FILLED_INVALID")
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [currentPendingSegment, resolveMutation])
 
   function reset() {
     setStep("file")
-    setFile(null)
+    setPendingFiles([])
     setSelectedTemplateId(null)
     setLanguage("tur")
-    setDocumentId(null)
-    setStatusData(null)
+    setJobs([])
+    setExpandedJobIndex(null)
     setUploadError(null)
+    setResolveError(null)
   }
+
+  const allJobsFinal = jobs.length > 0 && jobs.every((j) => j.status !== "PROCESSING")
 
   return (
     <div className="max-w-lg">
       <img src={belgeYukleTitle} alt="Belge yükle" className="mb-6 h-7.5 w-auto" />
 
-      <StepIndicator currentStep={stepToNumber(step)} isComplete={step === "done"} />
+      <StepIndicator currentStep={stepToNumber(step)} isComplete={step === "done" && allJobsFinal} />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,application/pdf"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       {step === "file" && (
         <div
@@ -218,30 +395,54 @@ function Upload() {
           )}
         >
           <p className="text-sm text-muted-foreground">
-            {isDragging ? "Bırak..." : "PDF, PNG veya JPEG — dosyayı sürükleyin ya da seçin"}
+            {isDragging ? "Bırak..." : "PDF, PNG veya JPEG — birden fazla dosyayı sürükleyin ya da seçin"}
           </p>
           <Button onClick={() => fileInputRef.current?.click()}>Dosya seç</Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,application/pdf"
-            className="hidden"
-            onChange={handleFileChange}
-          />
         </div>
       )}
 
       {step === "template" && (
         <div>
-          <p className="mb-2 text-sm text-muted-foreground">
-            Seçilen dosya: <span className="font-medium text-foreground">{file?.name}</span>
-          </p>
-
           {uploadError && (
             <div className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {uploadError}
             </div>
           )}
+
+          <p className="mb-2 text-sm font-medium">Seçilen dosyalar ({pendingFiles.length})</p>
+          <div className="mb-4 flex flex-col gap-1.5">
+            {pendingFiles.map((pf, i) => {
+              const mismatched = mismatchedFiles.includes(pf)
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex items-center justify-between rounded-md border px-3 py-1.5 text-sm",
+                    mismatched && "border-destructive/50 bg-destructive/5"
+                  )}
+                >
+                  <span className="truncate">
+                    {pf.file.name} <span className="text-muted-foreground">({pf.pageCount} sayfa)</span>
+                    {mismatched && (
+                      <span className="ml-2 text-xs text-destructive">
+                        şablon tam {templateMaxPage} sayfa istiyor
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="ml-2 shrink-0 text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            })}
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              + Dosya ekle
+            </Button>
+          </div>
 
           <div className="mb-3 flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Dil:</span>
@@ -263,12 +464,8 @@ function Upload() {
 
           {templatesLoading && <p className="text-muted-foreground">Şablonlar yükleniyor...</p>}
 
-          {templates && templates.content.length === 0 && (
-            <p className="text-sm text-muted-foreground">Henüz kullanılabilir bir şablon yok.</p>
-          )}
-
           {templates && templates.content.length > 0 && (
-            <div className="mb-4 grid grid-cols-2 gap-2">
+            <div className="mb-2 grid grid-cols-2 gap-2">
               {templates.content.map((template) => (
                 <button
                   key={template.id}
@@ -287,16 +484,28 @@ function Upload() {
             </div>
           )}
 
-          <div className="flex gap-2">
+          {mismatchedFiles.length > 0 && (
+            <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {mismatchedFiles.length} dosya sayfa sayısı bakımından bu şablonla uyumsuz. Devam etmek için
+              onları listeden çıkarın.
+            </div>
+          )}
+
+          <div className="mt-2 flex gap-2">
             <Button variant="outline" onClick={reset}>
               Geri
             </Button>
             <Button
               className="flex-1"
-              onClick={handleUpload}
-              disabled={!selectedTemplateId || uploadMutation.isPending}
+              onClick={() => uploadMutation.mutate()}
+              disabled={
+                pendingFiles.length === 0 ||
+                !selectedTemplateId ||
+                mismatchedFiles.length > 0 ||
+                uploadMutation.isPending
+              }
             >
-              {uploadMutation.isPending ? "Yükleniyor..." : "Yükle"}
+              {uploadMutation.isPending ? "Yükleniyor..." : `${pendingFiles.length} dosyayı yükle`}
             </Button>
           </div>
         </div>
@@ -304,17 +513,108 @@ function Upload() {
 
       {step === "processing" && (
         <div className="flex h-64 flex-col items-center justify-center gap-2">
-          <p className="text-sm text-muted-foreground">Belge işleniyor...</p>
+          <p className="text-sm text-muted-foreground">Belgeler yükleniyor...</p>
         </div>
       )}
 
-      {step === "done" && statusData && (
-        <div className="flex h-64 flex-col items-center justify-center gap-4">
-          <p className="text-lg font-medium">{STATUS_LABELS[statusData.status] ?? statusData.status}</p>
-          <div className="flex gap-2">
-            <Button variant="outline" render={<Link to={`/documents/${statusData.id}`}>Belgeyi görüntüle</Link>} />
-            <Button onClick={reset}>Yeni belge yükle</Button>
+      {step === "done" && expandedJobIndex === null && (
+        <div>
+          <div className="flex flex-col gap-2">
+            {jobs.map((job, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => job.status === "PENDING_REVIEW" && setExpandedJobIndex(i)}
+                className={cn(
+                  "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm",
+                  job.status === "PENDING_REVIEW" && "hover:bg-accent"
+                )}
+              >
+                <span className="truncate">{job.file.name}</span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                    job.status === "VALIDATED" && "bg-emerald-500/10 text-emerald-600",
+                    job.status === "PENDING_REVIEW" && "bg-orange-500/10 text-orange-600",
+                    (job.status === "REJECTED_EMPTY" || job.status === "REJECTED_INVALID" || job.status === "ERROR") &&
+                      "bg-destructive/10 text-destructive",
+                    job.status === "PROCESSING" && "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {STATUS_LABELS[job.status] ?? job.status}
+                </span>
+              </button>
+            ))}
           </div>
+          <Button className="mt-4" onClick={reset}>
+            Yeni belge yükle
+          </Button>
+        </div>
+      )}
+
+      {step === "done" && expandedJob && (
+        <div>
+          <Button variant="outline" size="sm" className="mb-3" onClick={() => setExpandedJobIndex(null)}>
+            ← Listeye dön
+          </Button>
+
+          {currentPendingSegment ? (
+            <div>
+              <p className="mb-1 text-sm text-orange-600">
+                {expandedJob.file.name} — kalan: {expandedPending.length} segment
+              </p>
+              <h2 className="mb-2 text-lg font-semibold">{currentPendingSegment.label}</h2>
+
+              {currentTemplateSegment && currentTemplateSegment.rules.length > 0 && (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Beklenen:{" "}
+                  {currentTemplateSegment.rules.map((r) => RULE_LABELS[r.type] ?? r.type).join(", ")}
+                </p>
+              )}
+
+              {segmentImageUrl && (
+                <img
+                  src={segmentImageUrl}
+                  alt={currentPendingSegment.label}
+                  className="mb-4 w-full rounded-md border"
+                />
+              )}
+
+              {resolveError && (
+                <div className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {resolveError}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => resolveMutation.mutate("FILLED_VALID")}
+                  disabled={resolveMutation.isPending}
+                >
+                  Geçerli (V)
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => resolveMutation.mutate("FILLED_INVALID")}
+                  disabled={resolveMutation.isPending}
+                >
+                  Geçersiz (I)
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
+              <p className="text-lg font-medium">
+                {STATUS_LABELS[expandedJob.status] ?? expandedJob.status}
+              </p>
+              <Button
+                variant="outline"
+                render={<Link to={`/documents/${expandedJob.documentId}`}>Belgeyi görüntüle</Link>}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

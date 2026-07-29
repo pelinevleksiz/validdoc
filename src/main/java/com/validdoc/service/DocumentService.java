@@ -172,7 +172,7 @@ public class DocumentService {
         if (!anyStillPending) {
             DocumentStatus recomputed = validationService.deriveStatus(entries);
             document.setStatus(recomputed);
-            document.setOperator(userRepository.findByUsername(resolvedBy).orElse(null));
+            document.setOperator(userRepository.findByUsernameAndActiveTrue(resolvedBy).orElse(null));
             document.setProcessedAt(LocalDateTime.now());
             document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
         }

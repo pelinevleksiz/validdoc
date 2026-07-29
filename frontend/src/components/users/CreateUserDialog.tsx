@@ -118,7 +118,9 @@ function CreateUserDialog() {
                   <FieldLabel htmlFor="new-role">Rol</FieldLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger id="new-role">
-                      <SelectValue placeholder="Rol seçin" />
+                      <SelectValue placeholder="Rol seçin">
+                        {(value: string) => (value === "ADMIN" ? "Admin" : "Operatör")}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="OPERATOR">Operatör</SelectItem>

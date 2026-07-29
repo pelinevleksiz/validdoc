@@ -419,6 +419,7 @@ function TemplateNew() {
     mutationFn: async () => {
       const res = await api.post("/api/templates", {
         name: templateName.trim(),
+        pageCount: fileKind === "pdf" ? pdfPageCount : 1,
         segments: segments.map((s) => ({
           label: s.label,
           page: s.page,
@@ -779,9 +780,11 @@ function TemplateNew() {
               <Field>
                 <FieldLabel htmlFor="new-rule-type">Kural ekle</FieldLabel>
                 <Select value={newRuleType} onValueChange={setNewRuleType}>
-                  <SelectTrigger id="new-rule-type">
-                    <SelectValue placeholder="Kural seçin" />
-                  </SelectTrigger>
+                    <SelectTrigger id="new-rule-type">
+                      <SelectValue placeholder="Kural seçin">
+                        {(value: string) => RULE_LABELS[value] ?? value}
+                      </SelectValue>
+                    </SelectTrigger>
                   <SelectContent>
                     {availableRuleTypes.map((rt) => (
                       <SelectItem key={rt.type} value={rt.type}>

@@ -10,6 +10,7 @@ import AuditLog from "@/pages/AuditLog"
 import Upload from "@/pages/Upload"
 import DocumentsList from "@/pages/DocumentsList"
 import DocumentDetail from "@/pages/DocumentDetail"
+import ReviewQueue from "@/pages/ReviewQueue"
 import ProtectedRoute from "@/components/ProtectedRoute"
 import AppLayout from "@/components/layout/AppLayout"
 
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: "/upload", element: <Upload /> },
       { path: "/documents", element: <DocumentsList /> },
       { path: "/documents/:id", element: <DocumentDetail /> },
+      { path: "/review-queue", element: <ReviewQueue /> },
       {
         path: "/users",
         element: (

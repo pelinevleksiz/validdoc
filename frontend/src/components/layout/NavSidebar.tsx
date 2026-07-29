@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Panel", path: "/dashboard" },
   { label: "Belge Yükle", path: "/upload" },
   { label: "Belgeler", path: "/documents" },
+  { label: "İnceleme Kuyruğu", path: "/review-queue" },
   { label: "Şablonlar", path: "/templates", roles: ["ADMIN"] },
   { label: "Kullanıcılar", path: "/users", roles: ["ADMIN"] },
   { label: "Denetim Kayıtları", path: "/audit-logs", roles: ["ADMIN"] },

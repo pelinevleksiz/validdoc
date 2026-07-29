@@ -19,6 +19,9 @@ public class Template {
     @Column(nullable = false)
     private boolean active = true;
 
+    @Column(nullable = false)
+    private int pageCount = 1;
+
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
     private List<TemplateSegment> segments = new ArrayList<>();
@@ -33,6 +36,9 @@ public class Template {
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+
+    public int getPageCount() { return pageCount; }
+    public void setPageCount(int pageCount) { this.pageCount = pageCount; }
 
     public List<TemplateSegment> getSegments() { return segments; }
     public void setSegments(List<TemplateSegment> segments) { this.segments = segments; }
