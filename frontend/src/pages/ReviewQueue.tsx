@@ -18,6 +18,7 @@ interface DocumentSummary {
   status: string
   segmentResults: string | null
   templateId: number
+  failureReason?: string | null
 }
 
 interface PagedResponse<T> {
@@ -32,6 +33,7 @@ interface SegmentResult {
   segmentId: number
   label: string
   outcome: string
+  reason?: string
 }
 
 interface TemplateSegmentDetail {
@@ -201,7 +203,15 @@ function ReviewQueue() {
       </div>
 
       {!currentSegment && (
-        <p className="text-muted-foreground">Bu belgede incelenecek segment kalmadı.</p>
+        <div>
+          {document?.segmentResults === null && document?.failureReason ? (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {document.failureReason}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">Bu belgede incelenecek segment kalmadı.</p>
+          )}
+        </div>
       )}
 
       {currentSegment && (
@@ -210,6 +220,10 @@ function ReviewQueue() {
             Kalan: {pendingSegments.length} segment
           </p>
           <h2 className="mb-2 text-lg font-semibold">{currentSegment.label}</h2>
+
+          {currentSegment.reason && (
+            <p className="mb-1 text-sm text-muted-foreground">{currentSegment.reason}</p>
+          )}
 
           {templateSegment && templateSegment.rules.length > 0 && (
             <p className="mb-3 text-sm text-muted-foreground">

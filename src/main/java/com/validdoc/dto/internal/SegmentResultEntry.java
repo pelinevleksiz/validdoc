@@ -12,6 +12,7 @@ public class SegmentResultEntry {
     private Long segmentId;
     private String label;
     private SegmentOutcome outcome;
+    private String reason;
     private List<String> failedRules;
     private String maskedValue;
     private Double ocrConfidence;
@@ -29,6 +30,9 @@ public class SegmentResultEntry {
 
     public SegmentOutcome getOutcome() { return outcome; }
     public void setOutcome(SegmentOutcome outcome) { this.outcome = outcome; }
+
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
 
     public List<String> getFailedRules() { return failedRules; }
     public void setFailedRules(List<String> failedRules) { this.failedRules = failedRules; }

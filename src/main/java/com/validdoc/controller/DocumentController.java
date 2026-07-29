@@ -224,7 +224,8 @@ public class DocumentController {
                 uploadedByUsername,
                 operatorUsername,
                 document.getUploadedAt(),
-                document.getProcessedAt()
+                document.getProcessedAt(),
+                document.getFailureReason()
         );
     }
 }

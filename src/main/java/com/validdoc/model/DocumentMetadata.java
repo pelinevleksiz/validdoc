@@ -48,6 +48,9 @@ public class DocumentMetadata {
     @JoinColumn(name = "operator_id")
     private User operator;
 
+    @Column(length = 255)
+    private String failureReason;
+
     public DocumentMetadata() {}
 
     public Long getId() { return id; }
@@ -82,4 +85,7 @@ public class DocumentMetadata {
 
     public User getOperator() { return operator; }
     public void setOperator(User operator) { this.operator = operator; }
+
+    public String getFailureReason() { return failureReason; }
+    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
 }

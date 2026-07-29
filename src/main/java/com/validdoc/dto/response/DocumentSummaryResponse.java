@@ -17,13 +17,14 @@ public class DocumentSummaryResponse {
     private String operatorUsername;
     private LocalDateTime uploadedAt;
     private LocalDateTime processedAt;
+    private String failureReason;
 
     public DocumentSummaryResponse() {}
 
     public DocumentSummaryResponse(Long id, String fileName, DocumentStatus status, Long templateId,
                                    DocumentLanguage language, String segmentResults,
                                    String uploadedByUsername, String operatorUsername,
-                                   LocalDateTime uploadedAt, LocalDateTime processedAt) {
+                                   LocalDateTime uploadedAt, LocalDateTime processedAt, String failureReason) {
         this.id = id;
         this.fileName = fileName;
         this.status = status;
@@ -34,6 +35,7 @@ public class DocumentSummaryResponse {
         this.operatorUsername = operatorUsername;
         this.uploadedAt = uploadedAt;
         this.processedAt = processedAt;
+        this.failureReason = failureReason;
     }
 
     public Long getId() { return id; }
@@ -65,4 +67,7 @@ public class DocumentSummaryResponse {
 
     public LocalDateTime getProcessedAt() { return processedAt; }
     public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
+
+    public String getFailureReason() { return failureReason; }
+    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
 }

@@ -117,18 +117,33 @@ public class DocumentService {
             applyValidationResult(document, result);
             persistPendingReviewImages(documentId, readings, result);
             finalizeDocument(document, "AUTO_" + document.getStatus().name());
-        } catch (PdfRasterizationException | PageOutOfBoundsException | TesseractException
-                 | OcrEngineException | OpenCVException | TemplateDefinitionException e) {
+        } catch (PageOutOfBoundsException e) {
             log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
-            applyEngineFailure(document);
+            applyEngineFailure(document, "Şablonun beklediği bir sayfa belgede bulunamadı (sayfa uyuşmazlığı).");
+            finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
+        } catch (PdfRasterizationException e) {
+            log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
+            applyEngineFailure(document, "PDF işlenemedi (bozuk ya da desteklenmeyen dosya).");
+            finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
+        } catch (TesseractException | OcrEngineException e) {
+            log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
+            applyEngineFailure(document, "OCR motoru bir hata verdi.");
+            finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
+        } catch (OpenCVException e) {
+            log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
+            applyEngineFailure(document, "Görüntü işleme motoru bir hata verdi.");
+            finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
+        } catch (TemplateDefinitionException e) {
+            log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
+            applyEngineFailure(document, "Şablon tanımı geçersiz.");
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
         } catch (IOException e) {
             log.error("Goruntu okunamadi, documentId={}", documentId, e);
-            applyEngineFailure(document);
+            applyEngineFailure(document, "Dosya okunamadı.");
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
         } catch (Throwable t) {
             log.error("Beklenmeyen hata, documentId={}", documentId, t);
-            applyEngineFailure(document);
+            applyEngineFailure(document, "Beklenmeyen bir hata oluştu.");
             finalizeDocument(document, ENGINE_ERROR_AUDIT_ACTION);
         }
     }
@@ -172,7 +187,7 @@ public class DocumentService {
         if (!anyStillPending) {
             DocumentStatus recomputed = validationService.deriveStatus(entries);
             document.setStatus(recomputed);
-            document.setOperator(userRepository.findByUsernameAndActiveTrue(resolvedBy).orElse(null));
+            document.setOperator(userRepository.findByUsername(resolvedBy).orElse(null));
             document.setProcessedAt(LocalDateTime.now());
             document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
         }
@@ -256,9 +271,10 @@ public class DocumentService {
         }
     }
 
-    private void applyEngineFailure(DocumentMetadata document) {
+    private void applyEngineFailure(DocumentMetadata document, String reason) {
         document.setStatus(DocumentStatus.PENDING_REVIEW);
         document.setProcessedAt(LocalDateTime.now());
+        document.setFailureReason(reason);
     }
 
     private boolean isTerminalStatus(DocumentStatus status) {

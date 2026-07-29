@@ -42,6 +42,7 @@ interface SegmentResult {
   segmentId: number
   label: string
   outcome: string
+  reason?: string
 }
 
 interface DocumentStatusData {
@@ -49,6 +50,7 @@ interface DocumentStatusData {
   fileName: string
   status: "PROCESSING" | "PENDING_REVIEW" | "VALIDATED" | "REJECTED_EMPTY" | "REJECTED_INVALID"
   segmentResults: string | null
+  failureReason?: string | null
 }
 
 interface PendingFile {
@@ -62,6 +64,7 @@ interface UploadJob {
   status: DocumentStatusData["status"] | "ERROR"
   segmentResults: string | null
   errorMessage: string | null
+  failureReason?: string | null
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -291,7 +294,12 @@ function Upload() {
         jobs.map(async (job) => {
           if (job.status !== "PROCESSING" || job.documentId === null) return job
           const res = await api.get<DocumentStatusData>(`/api/documents/${job.documentId}`)
-          return { ...job, status: res.data.status, segmentResults: res.data.segmentResults }
+          return {
+            ...job,
+            status: res.data.status,
+            segmentResults: res.data.segmentResults,
+            failureReason: res.data.failureReason,
+          }
         })
       )
       setJobs(updated)
@@ -565,6 +573,10 @@ function Upload() {
               </p>
               <h2 className="mb-2 text-lg font-semibold">{currentPendingSegment.label}</h2>
 
+              {currentPendingSegment.reason && (
+                <p className="mb-1 text-sm text-muted-foreground">{currentPendingSegment.reason}</p>
+              )}
+
               {currentTemplateSegment && currentTemplateSegment.rules.length > 0 && (
                 <p className="mb-3 text-sm text-muted-foreground">
                   Beklenen:{" "}
@@ -609,6 +621,9 @@ function Upload() {
               <p className="text-lg font-medium">
                 {STATUS_LABELS[expandedJob.status] ?? expandedJob.status}
               </p>
+              {expandedJob.failureReason && (
+                <p className="max-w-xs text-center text-sm text-destructive">{expandedJob.failureReason}</p>
+              )}
               <Button
                 variant="outline"
                 render={<Link to={`/documents/${expandedJob.documentId}`}>Belgeyi görüntüle</Link>}

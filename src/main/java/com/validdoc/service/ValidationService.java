@@ -70,7 +70,12 @@ public class ValidationService {
                 if (text.isEmpty()) {
                     boolean hasUndetectedContent = reading.getPixelDensity() != null
                             && reading.getPixelDensity() >= settings.getInkDensityThreshold();
-                    entry.setOutcome(hasUndetectedContent ? SegmentOutcome.PENDING_REVIEW : SegmentOutcome.EMPTY);
+                    if (hasUndetectedContent) {
+                        entry.setOutcome(SegmentOutcome.PENDING_REVIEW);
+                        entry.setReason("OCR metin okuyamadı ama alanda görünür içerik tespit edildi");
+                    } else {
+                        entry.setOutcome(SegmentOutcome.EMPTY);
+                    }
                 } else {
                     List<String> failedRules = evaluateTextRules(segment, text);
                     boolean lowConfidence = reading.getOcrConfidence() != null
@@ -78,6 +83,8 @@ public class ValidationService {
 
                     if (lowConfidence) {
                         entry.setOutcome(SegmentOutcome.PENDING_REVIEW);
+                        double roundedConfidence = Math.round(reading.getOcrConfidence() * 10.0) / 10.0;
+                        entry.setReason("OCR düşük güvenle okudu (%" + roundedConfidence + ")");
                         if (!failedRules.isEmpty()) {
                             entry.setFailedRules(failedRules);
                         }
@@ -128,14 +135,14 @@ public class ValidationService {
     private List<String> evaluateTextRules(TemplateSegment segment, String text) {
         List<String> failed = new ArrayList<>();
         for (SegmentRule rule : segment.getRules()) {
-            if (!isRuleSatisfied(rule, text)) {
+            if (!matchesRule(rule, text)) {
                 failed.add(rule.getRuleType().name());
             }
         }
         return failed;
     }
 
-    private boolean isRuleSatisfied(SegmentRule rule, String text) {
+    private boolean matchesRule(SegmentRule rule, String text) {
         return switch (rule.getRuleType()) {
             case LETTERS_ONLY -> LETTERS_ONLY_PATTERN.matcher(text).matches();
             case DIGITS_ONLY -> DIGITS_ONLY_PATTERN.matcher(text).matches();
@@ -143,117 +150,42 @@ public class ValidationService {
             case DATE -> isValidDate(text);
             case MIN_LENGTH -> rule.getParam() != null && text.length() >= rule.getParam();
             case MAX_LENGTH -> rule.getParam() != null && text.length() <= rule.getParam();
-            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches() && isValidTcKimlikChecksum(text);
-            case VKN -> VKN_PATTERN.matcher(text).matches() && isValidVknChecksum(text);
-            case PHONE_TR -> PHONE_TR_PATTERN.matcher(text.replaceAll("\\s+", " ")).matches();
+            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches();
+            case VKN -> VKN_PATTERN.matcher(text).matches();
+            case PHONE_TR -> PHONE_TR_PATTERN.matcher(text).matches();
             case EMAIL -> EMAIL_PATTERN.matcher(text).matches();
             case SIGNATURE_INK, STAMP_INK -> true;
         };
     }
 
     private boolean isValidDate(String text) {
-        return parseDate(text) != null;
-    }
-
-    private LocalDate parseDate(String text) {
         try {
-            return LocalDate.parse(text, DATE_FORMATTER);
-        } catch (DateTimeParseException slashFailure) {
+            LocalDate.parse(text, DATE_FORMATTER);
+            return true;
+        } catch (DateTimeParseException e) {
             try {
-                return LocalDate.parse(text, DATE_FORMATTER_DOTTED);
-            } catch (DateTimeParseException dottedFailure) {
-                log.warn("Tarih ayristirilamadi, text=[{}], slash-hata=[{}], dotted-hata=[{}]",
-                        text, slashFailure.getMessage(), dottedFailure.getMessage());
-                return null;
+                LocalDate.parse(text, DATE_FORMATTER_DOTTED);
+                return true;
+            } catch (DateTimeParseException e2) {
+                return false;
             }
-        }
-    }
-
-    private boolean isValidTcKimlikChecksum(String tc) {
-        if (tc == null || tc.length() != 11 || tc.charAt(0) == '0') return false;
-        try {
-            int[] d = new int[11];
-            for (int i = 0; i < 11; i++) {
-                d[i] = Character.getNumericValue(tc.charAt(i));
-            }
-            int oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
-            int evenSum = d[1] + d[3] + d[5] + d[7];
-            int digit10 = ((oddSum * 7) - evenSum) % 10;
-            if (digit10 < 0) digit10 += 10;
-            if (digit10 != d[9]) return false;
-
-            int sumFirst10 = 0;
-            for (int i = 0; i < 10; i++) {
-                sumFirst10 += d[i];
-            }
-            int digit11 = sumFirst10 % 10;
-            return digit11 == d[10];
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isValidVknChecksum(String vkn) {
-        if (vkn == null || vkn.length() != 10) return false;
-        try {
-            int sum = 0;
-            for (int i = 0; i < 9; i++) {
-                int digit = Character.getNumericValue(vkn.charAt(i));
-                int v = (digit + 10 - (i + 1)) % 10;
-                if (v != 9 && v != 0) {
-                    v = (v * (int) Math.pow(2, 9 - i)) % 9;
-                    if (v == 0) v = 9;
-                }
-                sum += v;
-            }
-            int lastDigit = Character.getNumericValue(vkn.charAt(9));
-            int checksum = (10 - (sum % 10)) % 10;
-            return lastDigit == checksum;
-        } catch (Exception e) {
-            return false;
         }
     }
 
     private String maskValue(TemplateSegment segment, String text) {
-        boolean hasIdLikeRule = segment.getRules().stream().anyMatch(r ->
-                r.getRuleType() == SegmentRuleType.TC_KIMLIK_NO
-                        || r.getRuleType() == SegmentRuleType.VKN
-                        || r.getRuleType() == SegmentRuleType.PHONE_TR);
-        if (hasIdLikeRule) {
-            return maskKeepLast(text, 2);
+        boolean isSensitive = segment.getRules().stream()
+                .anyMatch(r -> r.getRuleType() == SegmentRuleType.TC_KIMLIK_NO || r.getRuleType() == SegmentRuleType.VKN);
+        if (!isSensitive || text.length() <= 2) {
+            return text;
         }
-        boolean hasLettersOnlyRule = segment.getRules().stream()
-                .anyMatch(r -> r.getRuleType() == SegmentRuleType.LETTERS_ONLY);
-        if (hasLettersOnlyRule) {
-            return maskName(text);
-        }
-        return maskKeepLast(text, 0);
-    }
-
-    private String maskKeepLast(String text, int keepLast) {
-        String digitsOnly = text.replaceAll("\\s+", "");
-        int len = digitsOnly.length();
-        if (keepLast <= 0 || keepLast >= len) return "*".repeat(len);
-        return "*".repeat(len - keepLast) + digitsOnly.substring(len - keepLast);
-    }
-
-    private String maskName(String text) {
-        String[] parts = text.trim().split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            if (i > 0) sb.append(' ');
-            String part = parts[i];
-            sb.append(part.isEmpty() ? "" : part.charAt(0)).append("*".repeat(Math.max(0, part.length() - 1)));
-        }
-        return sb.toString();
+        return text.charAt(0) + "*".repeat(text.length() - 2) + text.charAt(text.length() - 1);
     }
 
     private String toJson(List<SegmentResultEntry> entries) {
         try {
             return jsonMapper.writeValueAsString(entries);
         } catch (JacksonException e) {
-            log.warn("Segment sonuclari serialize edilemedi, null olarak donuluyor", e);
-            return null;
+            throw new IllegalStateException("segmentResults JSON yazilamadi", e);
         }
     }
 }
