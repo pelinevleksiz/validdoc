@@ -1,27 +1,28 @@
 import { NavLink } from "react-router"
+import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
-import validdocWordmark from "@/assets/validdoc-wordmark.png"
 
 interface NavItem {
-  label: string
+  labelKey: string
   path: string
   roles?: string[]
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Panel", path: "/dashboard" },
-  { label: "Belge Yükle", path: "/upload" },
-  { label: "Belgeler", path: "/documents" },
-  { label: "İnceleme Kuyruğu", path: "/review-queue" },
-  { label: "Şablonlar", path: "/templates", roles: ["ADMIN"] },
-  { label: "Kullanıcılar", path: "/users", roles: ["ADMIN"] },
-  { label: "Denetim Kayıtları", path: "/audit-logs", roles: ["ADMIN"] },
-  { label: "Doğrulama Ayarları", path: "/settings", roles: ["ADMIN"] },
-  { label: "Şifre Değiştir", path: "/change-password", roles: ["ADMIN"] },
+  { labelKey: "nav.dashboard", path: "/dashboard" },
+  { labelKey: "nav.upload", path: "/upload" },
+  { labelKey: "nav.documents", path: "/documents" },
+  { labelKey: "nav.reviewQueue", path: "/review-queue" },
+  { labelKey: "nav.templates", path: "/templates", roles: ["ADMIN"] },
+  { labelKey: "nav.users", path: "/users", roles: ["ADMIN"] },
+  { labelKey: "nav.auditLogs", path: "/audit-logs", roles: ["ADMIN"] },
+  { labelKey: "nav.settings", path: "/settings", roles: ["ADMIN"] },
+  { labelKey: "nav.changePassword", path: "/change-password", roles: ["ADMIN"] },
 ]
 
 function NavSidebar() {
+  const { t } = useTranslation()
   const { role } = useAuth()
 
   const visibleItems = NAV_ITEMS.filter(
@@ -30,7 +31,7 @@ function NavSidebar() {
 
   return (
     <aside className="w-56 border-r p-4">
-      <img src={validdocWordmark} alt="validdoc" className="mb-6 block h-auto w-full" />
+      <div className="font-amarego lowercase mb-6 w-full text-center text-4xl">validdoc</div>
       <nav className="flex flex-col gap-1">
         {visibleItems.map((item) => (
           <NavLink
@@ -45,7 +46,7 @@ function NavSidebar() {
               )
             }
           >
-            {item.label}
+            {t(item.labelKey)}
           </NavLink>
         ))}
       </nav>

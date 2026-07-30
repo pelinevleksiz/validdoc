@@ -4,10 +4,10 @@ import axios from "axios"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import * as pdfjsLib from "pdfjs-dist"
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import belgeYukleTitle from "@/assets/belge-yukle-title.png"
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
@@ -67,39 +67,9 @@ interface UploadJob {
   failureReason?: string | null
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  PROCESSING: "İşleniyor",
-  PENDING_REVIEW: "İnceleme bekliyor",
-  VALIDATED: "Onaylandı",
-  REJECTED_EMPTY: "Boş belge olarak reddedildi",
-  REJECTED_INVALID: "Geçersiz olarak reddedildi",
-  ERROR: "Yükleme başarısız",
-}
-
-const RULE_LABELS: Record<string, string> = {
-  LETTERS_ONLY: "Yalnızca harf",
-  DIGITS_ONLY: "Yalnızca rakam",
-  ALPHANUMERIC: "Harf ve rakam",
-  DATE: "Tarih",
-  MIN_LENGTH: "Minimum uzunluk",
-  MAX_LENGTH: "Maksimum uzunluk",
-  TC_KIMLIK_NO: "TC Kimlik No",
-  VKN: "Vergi Kimlik No (VKN)",
-  PHONE_TR: "Telefon (TR)",
-  EMAIL: "E-posta",
-  SIGNATURE_INK: "İmza",
-  STAMP_INK: "Mühür",
-}
-
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "application/pdf"]
 
 type Step = "file" | "template" | "processing" | "done"
-
-const STEPS = [
-  { number: 1, label: "Yükle" },
-  { number: 2, label: "Şablon" },
-  { number: 3, label: "Sonuç" },
-]
 
 function stepToNumber(step: Step): 1 | 2 | 3 {
   if (step === "file") return 1
@@ -108,9 +78,16 @@ function stepToNumber(step: Step): 1 | 2 | 3 {
 }
 
 function StepIndicator({ currentStep, isComplete }: { currentStep: 1 | 2 | 3; isComplete: boolean }) {
+  const { t } = useTranslation()
+  const steps = [
+    { number: 1, label: t("upload.step1") },
+    { number: 2, label: t("upload.step2") },
+    { number: 3, label: t("upload.step3") },
+  ]
+
   return (
     <div className="mb-8 flex items-start">
-      {STEPS.map((s, i) => {
+      {steps.map((s, i) => {
         const done = currentStep > s.number || (isComplete && s.number === 3)
         const active = currentStep === s.number && !done
 
@@ -138,7 +115,7 @@ function StepIndicator({ currentStep, isComplete }: { currentStep: 1 | 2 | 3; is
                 {s.label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 className={cn(
                   "mx-2 mt-4.5 h-0.5 flex-1 -translate-y-1/2 transition-colors",
@@ -161,6 +138,7 @@ async function getFilePageCount(file: File): Promise<number> {
 }
 
 function Upload() {
+  const { t } = useTranslation()
   const [step, setStep] = useState<Step>("file")
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
@@ -200,7 +178,7 @@ function Upload() {
   async function addFiles(newFiles: File[]) {
     const invalid = newFiles.find((f) => !ACCEPTED_TYPES.includes(f.type))
     if (invalid) {
-      setUploadError("Sadece PDF, PNG veya JPEG dosyaları desteklenir.")
+      setUploadError(t("upload.unsupportedType"))
       return
     }
 
@@ -208,9 +186,7 @@ function Upload() {
       pendingFiles.some((pf) => pf.file.name === file.name && pf.file.size === file.size)
     const uniqueNewFiles = newFiles.filter((f) => !isDuplicate(f))
 
-    setUploadError(
-      uniqueNewFiles.length < newFiles.length ? "Bazı dosyalar zaten listede olduğu için tekrar eklenmedi." : null
-    )
+    setUploadError(uniqueNewFiles.length < newFiles.length ? t("upload.duplicateFile") : null)
 
     const withPageCounts = await Promise.all(
       uniqueNewFiles.map(async (file) => ({ file, pageCount: await getFilePageCount(file) }))
@@ -273,10 +249,8 @@ function Upload() {
             prev.map((job, idx) => (idx === i ? { ...job, documentId: res.data.id } : job))
           )
         } catch (error) {
-          const message =
-            axios.isAxiosError(error) && error.response?.data?.message
-              ? error.response.data.message
-              : "Yükleme başarısız oldu."
+          const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+          const message = code ? t(`errors.${code}`, t("errors.GENERIC")) : t("errors.GENERIC")
           setJobs((prev) =>
             prev.map((job, idx) => (idx === i ? { ...job, status: "ERROR", errorMessage: message } : job))
           )
@@ -351,7 +325,7 @@ function Upload() {
       )
     },
     onSuccess: () => setResolveError(null),
-    onError: () => setResolveError("İşlem başarısız oldu."),
+    onError: () => setResolveError(t("errors.ACTION_FAILED")),
   })
 
   useEffect(() => {
@@ -379,7 +353,7 @@ function Upload() {
 
   return (
     <div className="max-w-lg">
-      <img src={belgeYukleTitle} alt="Belge yükle" className="mb-6 h-7.5 w-auto" />
+      <h1 className="font-amarego lowercase mb-6 text-3xl">{t("upload.title")}</h1>
 
       <StepIndicator currentStep={stepToNumber(step)} isComplete={step === "done" && allJobsFinal} />
 
@@ -403,9 +377,9 @@ function Upload() {
           )}
         >
           <p className="text-sm text-muted-foreground">
-            {isDragging ? "Bırak..." : "PDF, PNG veya JPEG — birden fazla dosyayı sürükleyin ya da seçin"}
+            {isDragging ? t("upload.dropzoneDragging") : t("upload.dropzone")}
           </p>
-          <Button onClick={() => fileInputRef.current?.click()}>Dosya seç</Button>
+          <Button onClick={() => fileInputRef.current?.click()}>{t("upload.selectFile")}</Button>
         </div>
       )}
 
@@ -417,7 +391,9 @@ function Upload() {
             </div>
           )}
 
-          <p className="mb-2 text-sm font-medium">Seçilen dosyalar ({pendingFiles.length})</p>
+          <p className="mb-2 text-sm font-medium">
+            {t("upload.selectedFiles", { count: pendingFiles.length })}
+          </p>
           <div className="mb-4 flex flex-col gap-1.5">
             {pendingFiles.map((pf, i) => {
               const mismatched = mismatchedFiles.includes(pf)
@@ -430,10 +406,11 @@ function Upload() {
                   )}
                 >
                   <span className="truncate">
-                    {pf.file.name} <span className="text-muted-foreground">({pf.pageCount} sayfa)</span>
+                    {pf.file.name}{" "}
+                    <span className="text-muted-foreground">{t("upload.pageCount", { count: pf.pageCount })}</span>
                     {mismatched && (
                       <span className="ml-2 text-xs text-destructive">
-                        şablon tam {templateMaxPage} sayfa istiyor
+                        {t("upload.pageMismatch", { count: templateMaxPage })}
                       </span>
                     )}
                   </span>
@@ -448,12 +425,12 @@ function Upload() {
               )
             })}
             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-              + Dosya ekle
+              {t("upload.addFile")}
             </Button>
           </div>
 
           <div className="mb-3 flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Dil:</span>
+            <span className="text-sm text-muted-foreground">{t("upload.language")}</span>
             <Button
               size="sm"
               variant={language === "tur" ? "default" : "outline"}
@@ -470,7 +447,7 @@ function Upload() {
             </Button>
           </div>
 
-          {templatesLoading && <p className="text-muted-foreground">Şablonlar yükleniyor...</p>}
+          {templatesLoading && <p className="text-muted-foreground">{t("upload.loadingTemplates")}</p>}
 
           {templates && templates.content.length > 0 && (
             <div className="mb-2 grid grid-cols-2 gap-2">
@@ -494,14 +471,13 @@ function Upload() {
 
           {mismatchedFiles.length > 0 && (
             <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {mismatchedFiles.length} dosya sayfa sayısı bakımından bu şablonla uyumsuz. Devam etmek için
-              onları listeden çıkarın.
+              {t("upload.mismatchWarning", { count: mismatchedFiles.length })}
             </div>
           )}
 
           <div className="mt-2 flex gap-2">
             <Button variant="outline" onClick={reset}>
-              Geri
+              {t("upload.back")}
             </Button>
             <Button
               className="flex-1"
@@ -513,7 +489,7 @@ function Upload() {
                 uploadMutation.isPending
               }
             >
-              {uploadMutation.isPending ? "Yükleniyor..." : `${pendingFiles.length} dosyayı yükle`}
+              {uploadMutation.isPending ? t("upload.uploading") : t("upload.uploadButton", { count: pendingFiles.length })}
             </Button>
           </div>
         </div>
@@ -521,7 +497,7 @@ function Upload() {
 
       {step === "processing" && (
         <div className="flex h-64 flex-col items-center justify-center gap-2">
-          <p className="text-sm text-muted-foreground">Belgeler yükleniyor...</p>
+          <p className="text-sm text-muted-foreground">{t("upload.processing")}</p>
         </div>
       )}
 
@@ -549,13 +525,13 @@ function Upload() {
                     job.status === "PROCESSING" && "bg-muted text-muted-foreground"
                   )}
                 >
-                  {STATUS_LABELS[job.status] ?? job.status}
+                  {t(`documentStatus.${job.status}`, job.status)}
                 </span>
               </button>
             ))}
           </div>
           <Button className="mt-4" onClick={reset}>
-            Yeni belge yükle
+            {t("upload.newUpload")}
           </Button>
         </div>
       )}
@@ -563,13 +539,13 @@ function Upload() {
       {step === "done" && expandedJob && (
         <div>
           <Button variant="outline" size="sm" className="mb-3" onClick={() => setExpandedJobIndex(null)}>
-            ← Listeye dön
+            {t("upload.backToList")}
           </Button>
 
           {currentPendingSegment ? (
             <div>
               <p className="mb-1 text-sm text-orange-600">
-                {expandedJob.file.name} — kalan: {expandedPending.length} segment
+                {t("upload.remaining", { fileName: expandedJob.file.name, count: expandedPending.length })}
               </p>
               <h2 className="mb-2 text-lg font-semibold">{currentPendingSegment.label}</h2>
 
@@ -581,8 +557,9 @@ function Upload() {
 
               {currentTemplateSegment && currentTemplateSegment.rules.length > 0 && (
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Beklenen:{" "}
-                  {currentTemplateSegment.rules.map((r) => RULE_LABELS[r.type] ?? r.type).join(", ")}
+                  {t("upload.expected", {
+                    rules: currentTemplateSegment.rules.map((r) => t(`rules.${r.type}`, r.type)).join(", "),
+                  })}
                 </p>
               )}
 
@@ -606,7 +583,7 @@ function Upload() {
                   onClick={() => resolveMutation.mutate("FILLED_VALID")}
                   disabled={resolveMutation.isPending}
                 >
-                  Geçerli (V)
+                  {t("upload.valid")}
                 </Button>
                 <Button
                   variant="destructive"
@@ -614,21 +591,19 @@ function Upload() {
                   onClick={() => resolveMutation.mutate("FILLED_INVALID")}
                   disabled={resolveMutation.isPending}
                 >
-                  Geçersiz (I)
+                  {t("upload.invalid")}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center gap-4 py-8">
-              <p className="text-lg font-medium">
-                {STATUS_LABELS[expandedJob.status] ?? expandedJob.status}
-              </p>
+              <p className="text-lg font-medium">{t(`documentStatus.${expandedJob.status}`, expandedJob.status)}</p>
               {expandedJob.failureReason && (
                 <p className="max-w-xs text-center text-sm text-destructive">{expandedJob.failureReason}</p>
               )}
               <Button
                 variant="outline"
-                render={<Link to={`/documents/${expandedJob.documentId}`}>Belgeyi görüntüle</Link>}
+                render={<Link to={`/documents/${expandedJob.documentId}`}>{t("upload.viewDocument")}</Link>}
               />
             </div>
           )}

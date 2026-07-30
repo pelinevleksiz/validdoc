@@ -1,10 +1,11 @@
-import panelTitle from "@/assets/panel-title.png"
+import { useTranslation } from "react-i18next"
 
 function Dashboard() {
+  const { t } = useTranslation()
   return (
     <div>
-      <img src={panelTitle} alt="Panel" className="mb-4 h-6.75 w-auto" />
-      <p className="text-muted-foreground">Bu sayfa henüz yapım aşamasında.</p>
+      <h1 className="font-amarego lowercase mb-4 text-3xl">{t("nav.dashboard")}</h1>
+      <p className="text-muted-foreground">{t("dashboard.placeholder")}</p>
     </div>
   )
 }

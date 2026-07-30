@@ -5,9 +5,9 @@ import { z } from "zod"
 import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "react-router"
 import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
-import { getLanguage } from "@/lib/language"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +23,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import LanguageSwitcher from "@/components/layout/LanguageSwitcher"
 
 const loginSchema = z.object({
   username: z.string().min(1, "Kullanıcı adı zorunlu!"),
@@ -36,15 +37,16 @@ interface LoginResponse {
   role: string
 }
 
+const KNOWN_ERROR_CODES = ["BAD_CREDENTIALS", "TOO_MANY_LOGIN_ATTEMPTS"]
+
 function Login() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
-  const [serverError, setServerError] = useState<string | null>(() => {
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get("expired") === "1"
-      ? "Oturumunuz sona erdi, lütfen tekrar giriş yapın."
-      : null
+    return params.get("expired") === "1" ? "SESSION_EXPIRED" : null
   })
   const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState<number | null>(null)
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
@@ -53,7 +55,7 @@ function Login() {
     if (rateLimitSecondsLeft === null) return
     if (rateLimitSecondsLeft <= 0) {
       setRateLimitSecondsLeft(null)
-      setServerError(null)
+      setServerErrorCode(null)
       return
     }
     const timeout = setTimeout(() => {
@@ -86,42 +88,37 @@ function Login() {
         setRemainingAttempts(typeof remaining === "number" ? remaining : null)
       }
 
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setServerError(error.response.data.message)
-      } else {
-        setServerError("Bir hata oluştu, lütfen tekrar deneyin.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
     },
   })
 
   function onSubmit(values: LoginFormValues) {
-    setServerError(null)
+    setServerErrorCode(null)
     loginMutation.mutate(values)
   }
 
   const isRateLimited = rateLimitSecondsLeft !== null && rateLimitSecondsLeft > 0
   const showRemainingAttemptsWarning = remainingAttempts !== null && remainingAttempts <= 3
-  const remainingAttemptsLabel =
-    getLanguage() === "en" ? "Remaining attempts" : "Kalan deneme hakkı"
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="relative flex min-h-screen items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageSwitcher />
+      </div>
+
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">
-            Kurumsal hesabınıza giriş yapın.
-          </CardTitle>
-          <CardDescription>
-            Hesap oluşturma yalnızca sistem yöneticisi tarafından yapılabilir.
-          </CardDescription>
+          <CardTitle className="text-xl">{t("login.title")}</CardTitle>
+          <CardDescription>{t("login.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          {serverError && (
+          {serverErrorCode && (
             <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {serverError}
+              {t(`errors.${serverErrorCode}`)}
               {showRemainingAttemptsWarning && (
                 <div className="mt-1 text-xs">
-                  {remainingAttemptsLabel}: {remainingAttempts}
+                  {t("login.remainingAttempts")}: {remainingAttempts}
                 </div>
               )}
             </div>
@@ -134,7 +131,7 @@ function Login() {
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="login-username">Kullanıcı adı</FieldLabel>
+                    <FieldLabel htmlFor="login-username">{t("login.username")}</FieldLabel>
                     <Input
                       {...field}
                       id="login-username"
@@ -153,7 +150,7 @@ function Login() {
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="login-password">Şifre</FieldLabel>
+                    <FieldLabel htmlFor="login-password">{t("login.password")}</FieldLabel>
                     <div className="relative">
                       <Input
                         {...field}
@@ -167,7 +164,7 @@ function Login() {
                         onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
                       >
-                        {showPassword ? "Gizle" : "Göster"}
+                        {showPassword ? t("login.hide") : t("login.show")}
                       </button>
                     </div>
                     {fieldState.invalid && (
@@ -185,14 +182,14 @@ function Login() {
                 {isRateLimited
                   ? `${rateLimitSecondsLeft}sn`
                   : loginMutation.isPending
-                    ? "Giriş yapılıyor..."
-                    : "Giriş"}
+                    ? t("login.submitting")
+                    : t("login.submit")}
               </Button>
             </FieldGroup>
           </form>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Şifrenizi mi unuttunuz? Sistem yöneticinizle iletişime geçin.
+            {t("login.forgotPassword")}
           </p>
         </CardContent>
       </Card>

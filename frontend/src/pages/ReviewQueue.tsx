@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -10,7 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import reviewQueueTitle from "@/assets/inceleme-kuyrugu-title.png"
 
 interface DocumentSummary {
   id: number
@@ -49,22 +49,8 @@ interface TemplateDetail {
   segments: TemplateSegmentDetail[]
 }
 
-const RULE_LABELS: Record<string, string> = {
-  LETTERS_ONLY: "Yalnızca harf",
-  DIGITS_ONLY: "Yalnızca rakam",
-  ALPHANUMERIC: "Harf ve rakam",
-  DATE: "Tarih",
-  MIN_LENGTH: "Minimum uzunluk",
-  MAX_LENGTH: "Maksimum uzunluk",
-  TC_KIMLIK_NO: "TC Kimlik No",
-  VKN: "Vergi Kimlik No (VKN)",
-  PHONE_TR: "Telefon (TR)",
-  EMAIL: "E-posta",
-  SIGNATURE_INK: "İmza",
-  STAMP_INK: "Mühür",
-}
-
 function ReviewQueue() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -134,7 +120,7 @@ function ReviewQueue() {
       queryClient.invalidateQueries({ queryKey: ["review-queue"] })
     },
     onError: () => {
-      setResolveError("İşlem başarısız oldu.")
+      setResolveError(t("errors.ACTION_FAILED"))
     },
   })
 
@@ -155,24 +141,19 @@ function ReviewQueue() {
   if (selectedDocId === null) {
     return (
       <div>
-        <img
-          src={reviewQueueTitle}
-          alt="İnceleme Kuyruğu"
-          className="mb-4 h-9 w-auto"
-          style={{ transform: "translateY(-7.2px)" }}
-        />
+        <h1 className="font-amarego lowercase mb-4 text-3xl">{t("reviewQueue.title")}</h1>
 
-        {queueLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
+        {queueLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
         {queue && queue.content.length === 0 && (
-          <p className="text-muted-foreground">Bekleyen belge yok.</p>
+          <p className="text-muted-foreground">{t("reviewQueue.empty")}</p>
         )}
 
         {queue && queue.content.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Dosya adı</TableHead>
-                <TableHead className="text-right">İşlem</TableHead>
+                <TableHead>{t("reviewQueue.fileNameHeader")}</TableHead>
+                <TableHead className="text-right">{t("reviewQueue.actionHeader")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,7 +162,7 @@ function ReviewQueue() {
                   <TableCell>{doc.fileName}</TableCell>
                   <TableCell className="text-right">
                     <Button size="sm" onClick={() => setSelectedDocId(doc.id)}>
-                      İncele
+                      {t("reviewQueue.review")}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -198,7 +179,7 @@ function ReviewQueue() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">{document?.fileName}</h1>
         <Button variant="outline" size="sm" onClick={backToQueue}>
-          Kuyruğa dön
+          {t("reviewQueue.backToQueue")}
         </Button>
       </div>
 
@@ -209,7 +190,7 @@ function ReviewQueue() {
               {document.failureReason}
             </div>
           ) : (
-            <p className="text-muted-foreground">Bu belgede incelenecek segment kalmadı.</p>
+            <p className="text-muted-foreground">{t("reviewQueue.noSegments")}</p>
           )}
         </div>
       )}
@@ -217,7 +198,7 @@ function ReviewQueue() {
       {currentSegment && (
         <div className="max-w-md">
           <p className="mb-1 text-sm text-muted-foreground">
-            Kalan: {pendingSegments.length} segment
+            {t("reviewQueue.remaining", { count: pendingSegments.length })}
           </p>
           <h2 className="mb-2 text-lg font-semibold">{currentSegment.label}</h2>
 
@@ -229,7 +210,9 @@ function ReviewQueue() {
 
           {templateSegment && templateSegment.rules.length > 0 && (
             <p className="mb-3 text-sm text-muted-foreground">
-              Beklenen: {templateSegment.rules.map((r) => RULE_LABELS[r.type] ?? r.type).join(", ")}
+              {t("upload.expected", {
+                rules: templateSegment.rules.map((r) => t(`rules.${r.type}`, r.type)).join(", "),
+              })}
             </p>
           )}
 
@@ -249,7 +232,7 @@ function ReviewQueue() {
               onClick={() => resolveMutation.mutate("FILLED_VALID")}
               disabled={resolveMutation.isPending}
             >
-              Geçerli (V)
+              {t("upload.valid")}
             </Button>
             <Button
               variant="destructive"
@@ -257,7 +240,7 @@ function ReviewQueue() {
               onClick={() => resolveMutation.mutate("FILLED_INVALID")}
               disabled={resolveMutation.isPending}
             >
-              Geçersiz (I)
+              {t("upload.invalid")}
             </Button>
           </div>
         </div>

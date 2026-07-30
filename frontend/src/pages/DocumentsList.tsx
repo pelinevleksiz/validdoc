@@ -1,5 +1,6 @@
 import { Link } from "react-router"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import documentsTitle from "@/assets/belgeler-title.png"
 
 interface DocumentSummary {
   id: number
@@ -30,14 +30,6 @@ interface PagedResponse<T> {
   totalPages: number
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  PROCESSING: "İşleniyor",
-  PENDING_REVIEW: "İnceleme Bekliyor",
-  VALIDATED: "Onaylandı",
-  REJECTED_EMPTY: "Boş",
-  REJECTED_INVALID: "Geçersiz",
-}
-
 const STATUS_COLORS: Record<string, string> = {
   PROCESSING: "bg-muted text-muted-foreground",
   PENDING_REVIEW: "bg-orange-500/10 text-orange-600",
@@ -49,6 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
 const PAGE_SIZE = 20
 
 function DocumentsList() {
+  const { t } = useTranslation()
   const [page, setPage] = useState(0)
 
   const { data, isLoading, isError } = useQuery({
@@ -63,13 +56,13 @@ function DocumentsList() {
 
   return (
     <div>
-      <img src={documentsTitle} alt="Belgeler" className="mb-4 h-6.75 w-auto" />
+      <h1 className="font-amarego lowercase mb-4 text-3xl">{t("documents.title")}</h1>
 
-      {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
-      {isError && <p className="text-destructive">Belgeler yüklenemedi.</p>}
+      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isError && <p className="text-destructive">{t("documents.loadError")}</p>}
 
       {data && data.content.length === 0 && (
-        <p className="text-muted-foreground">Henüz belge yok.</p>
+        <p className="text-muted-foreground">{t("documents.empty")}</p>
       )}
 
       {data && data.content.length > 0 && (
@@ -77,10 +70,10 @@ function DocumentsList() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Dosya adı</TableHead>
-                <TableHead>Durum</TableHead>
-                <TableHead>Yükleyen</TableHead>
-                <TableHead>Yüklenme zamanı</TableHead>
+                <TableHead>{t("documents.fileNameHeader")}</TableHead>
+                <TableHead>{t("documents.statusHeader")}</TableHead>
+                <TableHead>{t("documents.uploadedByHeader")}</TableHead>
+                <TableHead>{t("documents.uploadedAtHeader")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -98,12 +91,12 @@ function DocumentsList() {
                         STATUS_COLORS[doc.status] ?? "bg-muted text-muted-foreground"
                       )}
                     >
-                      {STATUS_LABELS[doc.status] ?? doc.status}
+                      {t(`documentStatus.${doc.status}`, doc.status)}
                     </span>
                   </TableCell>
                   <TableCell>{doc.uploadedByUsername}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                    {new Date(doc.uploadedAt).toLocaleString("tr-TR")}
+                    {new Date(doc.uploadedAt).toLocaleString()}
                   </TableCell>
                 </TableRow>
               ))}
@@ -117,10 +110,10 @@ function DocumentsList() {
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
             >
-              Önceki
+              {t("common.previous")}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Sayfa {page + 1} / {data.totalPages}
+              {t("common.page", { current: page + 1, total: data.totalPages })}
             </span>
             <Button
               variant="outline"
@@ -128,7 +121,7 @@ function DocumentsList() {
               onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
               disabled={page >= data.totalPages - 1}
             >
-              Sonraki
+              {t("common.next")}
             </Button>
           </div>
         </>

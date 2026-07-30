@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router"
-import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import templatesTitle from "@/assets/sablonlar-title.png"
 
 interface TemplateSummary {
   id: number
@@ -38,9 +37,10 @@ interface PagedResponse<T> {
 }
 
 function Templates() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [templatePendingDeactivation, setTemplatePendingDeactivation] = useState<TemplateSummary | null>(null)
-  const [deactivateError, setDeactivateError] = useState<string | null>(null)
+  const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["templates"],
@@ -57,44 +57,40 @@ function Templates() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] })
       setTemplatePendingDeactivation(null)
-      setDeactivateError(null)
+      setDeactivateErrorCode(null)
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setDeactivateError(error.response.data.message)
-      } else {
-        setDeactivateError("İşlem başarısız oldu.")
-      }
+    onError: () => {
+      setDeactivateErrorCode("ACTION_FAILED")
     },
   })
 
   function handleOpenChange(open: boolean) {
     if (!open) {
       setTemplatePendingDeactivation(null)
-      setDeactivateError(null)
+      setDeactivateErrorCode(null)
     }
   }
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <img src={templatesTitle} alt="Şablonlar" className="h-6.75 w-auto" />
-        <Button render={<Link to="/templates/new">Şablon ekle</Link>} />
+        <h1 className="font-amarego lowercase text-3xl">{t("templates.title")}</h1>
+        <Button render={<Link to="/templates/new">{t("templates.addButton")}</Link>} />
       </div>
 
-      {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
-      {isError && <p className="text-destructive">Şablonlar yüklenemedi.</p>}
+      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isError && <p className="text-destructive">{t("templates.loadError")}</p>}
 
       {data && data.content.length === 0 && (
-        <p className="text-muted-foreground">Henüz şablon oluşturulmamış.</p>
+        <p className="text-muted-foreground">{t("templates.empty")}</p>
       )}
 
       {data && data.content.length > 0 && (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Şablon adı</TableHead>
-              <TableHead className="text-right">İşlemler</TableHead>
+              <TableHead>{t("templates.nameHeader")}</TableHead>
+              <TableHead className="text-right">{t("templates.actionsHeader")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -108,7 +104,7 @@ function Templates() {
                     className="text-destructive"
                     onClick={() => setTemplatePendingDeactivation(template)}
                   >
-                    Devre dışı bırak
+                    {t("templates.deactivate")}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -121,21 +117,21 @@ function Templates() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {templatePendingDeactivation?.name} devre dışı bırakılsın mı?
+              {t("templates.deactivateConfirmTitle", { name: templatePendingDeactivation?.name })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Bu şablon artık yeni belge yüklemelerinde seçilemeyecek. Bu şablonla daha önce işlenmiş belgeler etkilenmez.
+              {t("templates.deactivateConfirmDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          {deactivateError && (
+          {deactivateErrorCode && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {deactivateError}
+              {t(`errors.${deactivateErrorCode}`)}
             </div>
           )}
 
           <AlertDialogFooter>
-            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -143,7 +139,7 @@ function Templates() {
               }}
               disabled={deactivateMutation.isPending}
             >
-              {deactivateMutation.isPending ? "İşleniyor..." : "Devre dışı bırak"}
+              {deactivateMutation.isPending ? t("templates.deactivating") : t("templates.deactivate")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

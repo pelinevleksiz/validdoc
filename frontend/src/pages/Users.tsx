@@ -1,5 +1,5 @@
 import { useState } from "react"
-import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import CreateUserDialog from "@/components/users/CreateUserDialog"
-import usersTitle from "@/assets/kullanicilar-title.png"
 
 export interface UserSummary {
   id: number
@@ -40,9 +39,10 @@ interface PagedResponse<T> {
 }
 
 function Users() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [userPendingDeactivation, setUserPendingDeactivation] = useState<UserSummary | null>(null)
-  const [deactivateError, setDeactivateError] = useState<string | null>(null)
+  const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["users"],
@@ -59,41 +59,37 @@ function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
       setUserPendingDeactivation(null)
-      setDeactivateError(null)
+      setDeactivateErrorCode(null)
     },
-    onError: (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setDeactivateError(error.response.data.message)
-      } else {
-        setDeactivateError("İşlem başarısız oldu.")
-      }
+    onError: () => {
+      setDeactivateErrorCode("ACTION_FAILED")
     },
   })
 
   function handleOpenChange(open: boolean) {
     if (!open) {
       setUserPendingDeactivation(null)
-      setDeactivateError(null)
+      setDeactivateErrorCode(null)
     }
   }
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <img src={usersTitle} alt="Kullanıcılar" className="h-6.75 w-auto" />
+        <h1 className="font-amarego lowercase text-3xl">{t("users.title")}</h1>
         <CreateUserDialog />
       </div>
 
-      {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
-      {isError && <p className="text-destructive">Kullanıcılar yüklenemedi.</p>}
+      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isError && <p className="text-destructive">{t("users.loadError")}</p>}
 
       {data && (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kullanıcı adı</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead className="text-right">İşlemler</TableHead>
+              <TableHead>{t("users.usernameHeader")}</TableHead>
+              <TableHead>{t("users.roleHeader")}</TableHead>
+              <TableHead className="text-right">{t("users.actionsHeader")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -102,7 +98,7 @@ function Users() {
                 <TableCell>{user.username}</TableCell>
                 <TableCell>
                   <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
-                    {user.role === "ADMIN" ? "Admin" : "Operatör"}
+                    {user.role === "ADMIN" ? t("users.roleAdmin") : t("users.roleOperator")}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
@@ -112,7 +108,7 @@ function Users() {
                     className="text-destructive"
                     onClick={() => setUserPendingDeactivation(user)}
                   >
-                    Devre dışı bırak
+                    {t("users.deactivate")}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -125,21 +121,21 @@ function Users() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {userPendingDeactivation?.username} devre dışı bırakılsın mı?
+              {t("users.deactivateConfirmTitle", { username: userPendingDeactivation?.username })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Bu kullanıcı artık sisteme giriş yapamayacak. Geçmiş belge kayıtları etkilenmez.
+              {t("users.deactivateConfirmDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          {deactivateError && (
+          {deactivateErrorCode && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {deactivateError}
+              {t(`errors.${deactivateErrorCode}`)}
             </div>
           )}
 
           <AlertDialogFooter>
-            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -147,7 +143,7 @@ function Users() {
               }}
               disabled={deactivateMutation.isPending}
             >
-              {deactivateMutation.isPending ? "İşleniyor..." : "Devre dışı bırak"}
+              {deactivateMutation.isPending ? t("users.deactivating") : t("users.deactivate")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

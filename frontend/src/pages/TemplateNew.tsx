@@ -2,9 +2,9 @@ import { useRef, useState } from "react"
 import { Stage, Layer, Image as KonvaImage, Rect, Text } from "react-konva"
 import * as pdfjsLib from "pdfjs-dist"
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate } from "react-router"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,28 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import createTemplateTitle from "@/assets/sablon-olustur-title.png"
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 const A4_WIDTH_PX = 2480.3149606299213
 const A4_HEIGHT_PX = 3507.874015748031
 const DISPLAY_WIDTH = 495
-
-const RULE_LABELS: Record<string, string> = {
-  LETTERS_ONLY: "Yalnızca harf",
-  DIGITS_ONLY: "Yalnızca rakam",
-  ALPHANUMERIC: "Harf ve rakam",
-  DATE: "Tarih",
-  MIN_LENGTH: "Minimum uzunluk",
-  MAX_LENGTH: "Maksimum uzunluk",
-  TC_KIMLIK_NO: "TC Kimlik No",
-  VKN: "Vergi Kimlik No (VKN)",
-  PHONE_TR: "Telefon (TR)",
-  EMAIL: "E-posta",
-  SIGNATURE_INK: "İmza",
-  STAMP_INK: "Mühür",
-}
 
 type CanvasSource = HTMLImageElement | HTMLCanvasElement
 
@@ -83,8 +67,7 @@ interface PreviewResult {
 }
 
 function TemplateNew() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const [templateName, setTemplateName] = useState("")
   const [fileKind, setFileKind] = useState<"image" | "pdf" | null>(null)
   const [source, setSource] = useState<CanvasSource | null>(null)
@@ -93,10 +76,10 @@ function TemplateNew() {
   const [pdfDoc, setPdfDoc] = useState<any>(null)
   const [pdfPageNumber, setPdfPageNumber] = useState(1)
   const [pdfPageCount, setPdfPageCount] = useState(1)
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [segments, setSegments] = useState<DraftSegment[]>([])
-  const [isDragging, setIsDragging] = useState(false)
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [drawStart, setDrawStart] = useState<Point | null>(null)
   const [drawCurrent, setDrawCurrent] = useState<Point | null>(null)
@@ -123,6 +106,10 @@ function TemplateNew() {
   const displayHeight = A4_HEIGHT_PX * baseScale
   const currentPage = fileKind === "pdf" ? pdfPageNumber : 1
   const effectiveScale = baseScale * zoom
+
+  function ruleLabel(type: string) {
+    return t(`rules.${type}`, type)
+  }
 
   function rectsOverlap(
     a: { x: number; y: number; w: number; h: number },
@@ -259,12 +246,18 @@ function TemplateNew() {
       .some((s) => rectsOverlap(newRect, s))
 
     if (overlapsExisting) {
-      setDrawError("Bu alan başka bir segmentle çakışıyor. Segmentler üst üste binemez.")
+      setDrawError(t("templateNew.overlapError"))
       return
     }
 
     setDrawError(null)
     setPendingSegment({ x, y, w, h, page: currentPage })
+  }
+
+  function openRuleEditor(segmentId: string) {
+    setRuleEditSegmentId(segmentId)
+    setNewRuleType(null)
+    setNewRuleParam("")
   }
 
   function confirmPendingSegment() {
@@ -295,12 +288,6 @@ function TemplateNew() {
 
   function removeSegment(id: string) {
     setSegments((prev) => prev.filter((s) => s.id !== id))
-  }
-
-  function openRuleEditor(segmentId: string) {
-    setRuleEditSegmentId(segmentId)
-    setNewRuleType(null)
-    setNewRuleParam("")
   }
 
   function closeRuleEditor() {
@@ -405,11 +392,8 @@ function TemplateNew() {
     },
     onError: (error: unknown) => {
       setPreviewResults(null)
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setPreviewError(error.response.data.message)
-      } else {
-        setPreviewError("Önizleme başarısız oldu.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setPreviewError(code ? t(`errors.${code}`, t("errors.GENERIC")) : t("errors.GENERIC"))
     },
   })
 
@@ -433,15 +417,11 @@ function TemplateNew() {
       return res.data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["templates"] })
-      navigate("/templates")
+      window.location.href = "/templates"
     },
     onError: (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setSaveError(error.response.data.message)
-      } else {
-        setSaveError("Şablon kaydedilemedi.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setSaveError(code ? t(`errors.${code}`, t("errors.GENERIC")) : t("errors.GENERIC"))
     },
   })
 
@@ -449,7 +429,6 @@ function TemplateNew() {
   const canSave = templateName.trim().length > 0 && segments.length > 0 && !hasSegmentWithoutRules
 
   const visibleSegments = segments.filter((s) => s.page === currentPage)
-
   const previewRect =
     drawStart && drawCurrent
       ? {
@@ -462,15 +441,15 @@ function TemplateNew() {
 
   return (
     <div>
-      <img src={createTemplateTitle} alt="Şablon oluştur" className="mb-4 h-6.75 w-auto" />
+      <h1 className="font-amarego lowercase mb-4 text-3xl">{t("templateNew.title")}</h1>
 
       <Field className="mb-4 max-w-sm">
-        <FieldLabel htmlFor="template-name">Şablon adı</FieldLabel>
+        <FieldLabel htmlFor="template-name">{t("templateNew.nameLabel")}</FieldLabel>
         <Input
           id="template-name"
           value={templateName}
           onChange={(e) => setTemplateName(e.target.value)}
-          placeholder="ör. Kimlik Kartı"
+          placeholder={t("templateNew.namePlaceholder")}
         />
       </Field>
 
@@ -488,10 +467,10 @@ function TemplateNew() {
                 onClick={() => goToPdfPage(pdfPageNumber - 1)}
                 disabled={pdfPageNumber <= 1}
               >
-                Önceki sayfa
+                {t("templateNew.previousPage")}
               </Button>
               <span className="text-sm text-muted-foreground">
-                Sayfa {pdfPageNumber} / {pdfPageCount}
+                {t("templateNew.pageOf", { current: pdfPageNumber, total: pdfPageCount })}
               </span>
               <Button
                 variant="outline"
@@ -499,7 +478,7 @@ function TemplateNew() {
                 onClick={() => goToPdfPage(pdfPageNumber + 1)}
                 disabled={pdfPageNumber >= pdfPageCount}
               >
-                Sonraki sayfa
+                {t("templateNew.nextPage")}
               </Button>
             </>
           )}
@@ -511,14 +490,14 @@ function TemplateNew() {
               onClick={() => previewMutation.mutate()}
               disabled={visibleSegments.length === 0 || previewMutation.isPending}
             >
-              {previewMutation.isPending ? "Önizleniyor..." : "Önizle"}
+              {previewMutation.isPending ? t("templateNew.previewing") : t("templateNew.preview")}
             </Button>
             <Button
               size="sm"
               onClick={resetUpload}
               className="bg-black text-white hover:bg-black/90"
             >
-              Belgeyi değiştir
+              {t("templateNew.changeDocument")}
             </Button>
           </div>
         </div>
@@ -548,9 +527,9 @@ function TemplateNew() {
               style={{ height: displayHeight }}
             >
               <p className="text-sm text-muted-foreground">
-                {isDragging ? "Bırak..." : "Örnek belge yükle (PNG, JPEG veya PDF) — sürükleyin ya da seçin"}
+                {isDragging ? t("templateNew.dropzoneDragging") : t("templateNew.dropzone")}
               </p>
-              <Button onClick={() => fileInputRef.current?.click()}>Dosya seç</Button>
+              <Button onClick={() => fileInputRef.current?.click()}>{t("templateNew.selectFile")}</Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -636,7 +615,7 @@ function TemplateNew() {
         >
           <div className="flex flex-col gap-2">
             {segments.length === 0 && (
-              <p className="text-sm text-muted-foreground">Henüz segment eklenmedi.</p>
+              <p className="text-sm text-muted-foreground">{t("templateNew.noSegments")}</p>
             )}
             {segments.map((seg) => (
               <div
@@ -656,7 +635,10 @@ function TemplateNew() {
                         : "text-xs text-muted-foreground"
                     }
                   >
-                    Sayfa {seg.page} · {seg.rules.length === 0 ? "kural yok" : `${seg.rules.length} kural`}
+                    {t("templateNew.page", { page: seg.page })} ·{" "}
+                    {seg.rules.length === 0
+                      ? t("templateNew.noRules")
+                      : t("templateNew.ruleCount", { count: seg.rules.length })}
                   </p>
                 </button>
                 <button
@@ -686,7 +668,7 @@ function TemplateNew() {
             }}
             disabled={!source || isDrawingMode}
           >
-            {isDrawingMode ? "Belge üzerinde çizin..." : "Segment ekle"}
+            {isDrawingMode ? t("templateNew.drawing") : t("templateNew.addSegment")}
           </Button>
         </div>
       </div>
@@ -699,9 +681,7 @@ function TemplateNew() {
         )}
         {!canSave && segments.length > 0 && (
           <p className="mb-2 text-xs text-muted-foreground">
-            {hasSegmentWithoutRules
-              ? "Kaydetmeden önce her segmente en az bir kural atamalısın."
-              : "Şablon adını girmelisin."}
+            {hasSegmentWithoutRules ? t("templateNew.needsRuleWarning") : t("templateNew.needsNameWarning")}
           </p>
         )}
         <Button
@@ -709,17 +689,17 @@ function TemplateNew() {
           onClick={() => saveMutation.mutate()}
           disabled={!canSave || saveMutation.isPending}
         >
-          {saveMutation.isPending ? "Kaydediliyor..." : "Şablonu kaydet"}
+          {saveMutation.isPending ? t("templateNew.saving") : t("templateNew.saveButton")}
         </Button>
       </div>
 
       <Dialog open={pendingSegment !== null} onOpenChange={(open) => !open && cancelPendingSegment()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Segmenti adlandır</DialogTitle>
+            <DialogTitle>{t("templateNew.nameSegmentTitle")}</DialogTitle>
           </DialogHeader>
           <Field>
-            <FieldLabel htmlFor="segment-label">Segment adı</FieldLabel>
+            <FieldLabel htmlFor="segment-label">{t("templateNew.segmentNameLabel")}</FieldLabel>
             <Input
               id="segment-label"
               value={pendingLabel}
@@ -731,16 +711,16 @@ function TemplateNew() {
                 }
               }}
               maxLength={30}
-              placeholder="ör. Ad Soyad"
+              placeholder={t("templateNew.segmentNamePlaceholder")}
               autoFocus
             />
           </Field>
           <DialogFooter>
             <Button variant="outline" onClick={cancelPendingSegment}>
-              Vazgeç
+              {t("common.cancel")}
             </Button>
             <Button onClick={confirmPendingSegment} disabled={!pendingLabel.trim()}>
-              Ekle
+              {t("templateNew.add")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -749,7 +729,7 @@ function TemplateNew() {
       <Dialog open={ruleEditSegmentId !== null} onOpenChange={(open) => !open && closeRuleEditor()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{ruleEditSegment?.label} — kurallar</DialogTitle>
+            <DialogTitle>{t("templateNew.rulesDialogTitle", { label: ruleEditSegment?.label })}</DialogTitle>
           </DialogHeader>
 
           {ruleEditSegment && ruleEditSegment.rules.length > 0 && (
@@ -760,7 +740,7 @@ function TemplateNew() {
                   className="flex items-center justify-between rounded-md border px-2 py-1.5 text-sm"
                 >
                   <span>
-                    {RULE_LABELS[rule.type] ?? rule.type}
+                    {ruleLabel(rule.type)}
                     {rule.param !== undefined && ` (${rule.param})`}
                   </span>
                   <button
@@ -778,17 +758,17 @@ function TemplateNew() {
           {availableRuleTypes.length > 0 ? (
             <div className="flex flex-col gap-2 border-t pt-3">
               <Field>
-                <FieldLabel htmlFor="new-rule-type">Kural ekle</FieldLabel>
+                <FieldLabel htmlFor="new-rule-type">{t("templateNew.addRule")}</FieldLabel>
                 <Select value={newRuleType} onValueChange={setNewRuleType}>
-                    <SelectTrigger id="new-rule-type">
-                      <SelectValue placeholder="Kural seçin">
-                        {(value: string) => RULE_LABELS[value] ?? value}
-                      </SelectValue>
-                    </SelectTrigger>
+                  <SelectTrigger id="new-rule-type">
+                    <SelectValue placeholder={t("templateNew.selectRule")}>
+                      {(value: string) => (value ? ruleLabel(value) : null)}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     {availableRuleTypes.map((rt) => (
                       <SelectItem key={rt.type} value={rt.type}>
-                        {RULE_LABELS[rt.type] ?? rt.type}
+                        {ruleLabel(rt.type)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -797,7 +777,7 @@ function TemplateNew() {
 
               {selectedRuleInfo?.requiresParam && (
                 <Field>
-                  <FieldLabel htmlFor="new-rule-param">Değer</FieldLabel>
+                  <FieldLabel htmlFor="new-rule-param">{t("templateNew.value")}</FieldLabel>
                   <Input
                     id="new-rule-param"
                     type="number"
@@ -813,20 +793,18 @@ function TemplateNew() {
                 onClick={addRule}
                 disabled={!newRuleType || (selectedRuleInfo?.requiresParam && !newRuleParam)}
               >
-                Ekle
+                {t("templateNew.add")}
               </Button>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {hasInkRule
-                ? "İmza/mühür kuralları başka bir kuralla birlikte kullanılamaz."
-                : "Tüm uygun kurallar zaten eklendi."}
+              {hasInkRule ? t("templateNew.inkRuleExclusive") : t("templateNew.allRulesAdded")}
             </p>
           )}
 
           <DialogFooter>
             <Button variant="outline" onClick={closeRuleEditor}>
-              Kapat
+              {t("templateNew.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -835,24 +813,24 @@ function TemplateNew() {
       <Dialog open={previewResults !== null} onOpenChange={(open) => !open && setPreviewResults(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Önizleme sonuçları</DialogTitle>
+            <DialogTitle>{t("templateNew.previewResultsTitle")}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-2">
             {previewResults?.map((r, i) => (
               <div key={i} className="rounded-md border px-3 py-2">
                 <p className="text-sm font-medium">{r.label}</p>
                 <p className="text-xs text-muted-foreground">
-                  Okunan metin: {r.rawText ? `"${r.rawText}"` : "(boş)"}
+                  {t("templateNew.readText")}: {r.rawText ? `"${r.rawText}"` : t("templateNew.empty")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Mürekkep yoğunluğu: {(r.inkDensity * 100).toFixed(1)}%
+                  {t("templateNew.inkDensity")}: {(r.inkDensity * 100).toFixed(1)}%
                 </p>
               </div>
             ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewResults(null)}>
-              Kapat
+              {t("templateNew.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -861,14 +839,14 @@ function TemplateNew() {
       <Dialog open={previewError !== null} onOpenChange={(open) => !open && setPreviewError(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Önizleme başarısız</DialogTitle>
+            <DialogTitle>{t("templateNew.previewFailedTitle")}</DialogTitle>
           </DialogHeader>
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {previewError}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewError(null)}>
-              Kapat
+              {t("templateNew.close")}
             </Button>
           </DialogFooter>
         </DialogContent>

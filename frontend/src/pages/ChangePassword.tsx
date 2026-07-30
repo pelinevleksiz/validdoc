@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@tanstack/react-query"
 import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +20,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import changePasswordTitle from "@/assets/sifre-degistir-title.png"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Mevcut şifre zorunlu"),
@@ -28,8 +28,11 @@ const changePasswordSchema = z.object({
 
 type ChangePasswordValues = z.infer<typeof changePasswordSchema>
 
+const KNOWN_ERROR_CODES = ["BAD_CREDENTIALS"]
+
 function ChangePassword() {
-  const [serverError, setServerError] = useState<string | null>(null)
+  const { t } = useTranslation()
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
   const form = useForm<ChangePasswordValues>({
@@ -43,21 +46,18 @@ function ChangePassword() {
     },
     onSuccess: () => {
       setSuccess(true)
-      setServerError(null)
+      setServerErrorCode(null)
       form.reset()
     },
     onError: (error: unknown) => {
       setSuccess(false)
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setServerError(error.response.data.message)
-      } else {
-        setServerError("Bir hata oluştu, lütfen tekrar deneyin.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
     },
   })
 
   function onSubmit(values: ChangePasswordValues) {
-    setServerError(null)
+    setServerErrorCode(null)
     setSuccess(false)
     changeMutation.mutate(values)
   }
@@ -65,18 +65,18 @@ function ChangePassword() {
   return (
     <Card className="max-w-sm">
       <CardHeader>
-        <img src={changePasswordTitle} alt="Şifre değiştir" className="mb-1 h-8.25 w-auto" />
-        <CardDescription>Kendi hesabının şifresini güncelle.</CardDescription>
+        <h2 className="font-amarego lowercase text-2xl">{t("changePassword.title")}</h2>
+        <CardDescription>{t("changePassword.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {serverError && (
+        {serverErrorCode && (
           <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {serverError}
+            {t(`errors.${serverErrorCode}`)}
           </div>
         )}
         {success && (
           <div className="mb-4 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
-            Şifre başarıyla güncellendi.
+            {t("changePassword.success")}
           </div>
         )}
 
@@ -87,7 +87,7 @@ function ChangePassword() {
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="current-password">Mevcut şifre</FieldLabel>
+                  <FieldLabel htmlFor="current-password">{t("changePassword.currentPassword")}</FieldLabel>
                   <Input {...field} id="current-password" type="password" />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -99,7 +99,7 @@ function ChangePassword() {
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="new-password-field">Yeni şifre</FieldLabel>
+                  <FieldLabel htmlFor="new-password-field">{t("changePassword.newPassword")}</FieldLabel>
                   <Input {...field} id="new-password-field" type="password" />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -107,7 +107,7 @@ function ChangePassword() {
             />
 
             <Button type="submit" className="w-full" disabled={changeMutation.isPending}>
-              {changeMutation.isPending ? "Güncelleniyor..." : "Şifreyi güncelle"}
+              {changeMutation.isPending ? t("changePassword.submitting") : t("changePassword.submit")}
             </Button>
           </FieldGroup>
         </form>

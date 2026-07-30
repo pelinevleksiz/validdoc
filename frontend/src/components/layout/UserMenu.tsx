@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router"
 import { useAuth } from "@/contexts/AuthContext"
 import {
@@ -6,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+
 
 function UserMenu() {
   const navigate = useNavigate()
@@ -17,7 +19,8 @@ function UserMenu() {
   }
 
   const initial = username ? username.charAt(0).toUpperCase() : "?"
-
+  const { t } = useTranslation()
+  
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -34,7 +37,7 @@ function UserMenu() {
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={handleLogout}>Çıkış yap</DropdownMenuItem>
+        <DropdownMenuItem onClick={handleLogout}>{t("common.logout")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

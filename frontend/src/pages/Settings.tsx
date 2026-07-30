@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import axios from "axios"
 import { api } from "@/lib/api"
@@ -19,7 +20,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import settingsTitle from "@/assets/dogrulama-ayarlari-title.png"
 
 interface ValidationSettingsData {
   retentionDays: number
@@ -29,27 +29,32 @@ interface ValidationSettingsData {
   updatedBy: string
 }
 
-const settingsSchema = z.object({
-  retentionDays: z
-    .string()
-    .min(1, "Zorunlu")
-    .refine((v) => Number.isInteger(Number(v)) && Number(v) > 0, "Pozitif bir tam sayı olmalı"),
-  inkDensityThreshold: z
-    .string()
-    .min(1, "Zorunlu")
-    .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 1, "0 ile 1 arasında olmalı"),
-  ocrConfidenceThreshold: z
-    .string()
-    .min(1, "Zorunlu")
-    .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 100, "0 ile 100 arasında olmalı"),
-})
+function useSettingsSchema() {
+  const { t } = useTranslation()
+  return z.object({
+    retentionDays: z
+      .string()
+      .min(1, t("settings.required"))
+      .refine((v) => Number.isInteger(Number(v)) && Number(v) > 0, t("settings.retentionInvalid")),
+    inkDensityThreshold: z
+      .string()
+      .min(1, t("settings.required"))
+      .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 1, t("settings.inkDensityInvalid")),
+    ocrConfidenceThreshold: z
+      .string()
+      .min(1, t("settings.required"))
+      .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 100, t("settings.ocrConfidenceInvalid")),
+  })
+}
 
-type SettingsFormValues = z.infer<typeof settingsSchema>
+type SettingsFormValues = z.infer<ReturnType<typeof useSettingsSchema>>
 
 function Settings() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [serverError, setServerError] = useState<string | null>(null)
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const settingsSchema = useSettingsSchema()
 
   const { data, isLoading } = useQuery({
     queryKey: ["validation-settings"],
@@ -82,45 +87,45 @@ function Settings() {
     onSuccess: (updated) => {
       queryClient.setQueryData(["validation-settings"], updated)
       setSuccess(true)
-      setServerError(null)
+      setServerErrorCode(null)
     },
     onError: (error: unknown) => {
       setSuccess(false)
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setServerError(error.response.data.message)
-      } else {
-        setServerError("Ayarlar kaydedilemedi.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setServerErrorCode(code ?? "GENERIC")
     },
   })
 
   function onSubmit(values: SettingsFormValues) {
-    setServerError(null)
+    setServerErrorCode(null)
     setSuccess(false)
     updateMutation.mutate(values)
   }
 
   return (
     <div>
-      {isLoading && <p className="text-muted-foreground">Yükleniyor...</p>}
+      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
 
       {data && (
         <Card className="max-w-sm">
           <CardHeader>
-            <img src={settingsTitle} alt="Doğrulama ayarları" className="mb-1 h-8.5 w-auto" />
+            <h2 className="font-amarego lowercase text-2xl">{t("settings.title")}</h2>
             <CardDescription>
-              Son güncelleme: {data.updatedBy} — {new Date(data.updatedAt).toLocaleString("tr-TR")}
+              {t("settings.lastUpdated", {
+                by: data.updatedBy,
+                at: new Date(data.updatedAt).toLocaleString(),
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {serverError && (
+            {serverErrorCode && (
               <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {serverError}
+                {t(`errors.${serverErrorCode}`, t("errors.GENERIC"))}
               </div>
             )}
             {success && (
               <div className="mb-4 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
-                Ayarlar güncellendi.
+                {t("settings.success")}
               </div>
             )}
 
@@ -131,7 +136,7 @@ function Settings() {
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="retention-days">Saklama süresi (gün)</FieldLabel>
+                      <FieldLabel htmlFor="retention-days">{t("settings.retentionDays")}</FieldLabel>
                       <Input {...field} id="retention-days" type="number" min={1} />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>
@@ -143,7 +148,7 @@ function Settings() {
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="ink-density">Mürekkep yoğunluğu eşiği (0-1)</FieldLabel>
+                      <FieldLabel htmlFor="ink-density">{t("settings.inkDensity")}</FieldLabel>
                       <Input {...field} id="ink-density" type="number" step="0.01" min={0} max={1} />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>
@@ -155,7 +160,7 @@ function Settings() {
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="ocr-confidence">OCR güven eşiği (0-100)</FieldLabel>
+                      <FieldLabel htmlFor="ocr-confidence">{t("settings.ocrConfidence")}</FieldLabel>
                       <Input {...field} id="ocr-confidence" type="number" step="0.1" min={0} max={100} />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>
@@ -163,7 +168,7 @@ function Settings() {
                 />
 
                 <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Kaydediliyor..." : "Kaydet"}
+                  {updateMutation.isPending ? t("common.saving") : t("common.save")}
                 </Button>
               </FieldGroup>
             </form>

@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import axios from "axios"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,10 +37,13 @@ const createUserSchema = z.object({
 
 type CreateUserValues = z.infer<typeof createUserSchema>
 
+const KNOWN_ERROR_CODES = ["DUPLICATE_RECORD"]
+
 function CreateUserDialog() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [serverError, setServerError] = useState<string | null>(null)
+  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
 
   const form = useForm<CreateUserValues>({
     resolver: zodResolver(createUserSchema),
@@ -57,30 +61,27 @@ function CreateUserDialog() {
       setOpen(false)
     },
     onError: (error: unknown) => {
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setServerError(error.response.data.message)
-      } else {
-        setServerError("Bir hata oluştu, lütfen tekrar deneyin.")
-      }
+      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
+      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
     },
   })
 
   function onSubmit(values: CreateUserValues) {
-    setServerError(null)
+    setServerErrorCode(null)
     createMutation.mutate(values)
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Kullanıcı ekle</Button>} />
+      <DialogTrigger render={<Button>{t("users.addButton")}</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Yeni kullanıcı oluştur</DialogTitle>
+          <DialogTitle>{t("users.createDialogTitle")}</DialogTitle>
         </DialogHeader>
 
-        {serverError && (
+        {serverErrorCode && (
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {serverError}
+            {t(`errors.${serverErrorCode}`)}
           </div>
         )}
 
@@ -91,7 +92,7 @@ function CreateUserDialog() {
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="new-username">Kullanıcı adı</FieldLabel>
+                  <FieldLabel htmlFor="new-username">{t("users.usernameHeader")}</FieldLabel>
                   <Input {...field} id="new-username" />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -103,7 +104,7 @@ function CreateUserDialog() {
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="new-password">Şifre</FieldLabel>
+                  <FieldLabel htmlFor="new-password">{t("users.password")}</FieldLabel>
                   <Input {...field} id="new-password" type="password" />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -115,16 +116,16 @@ function CreateUserDialog() {
               control={form.control}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="new-role">Rol</FieldLabel>
+                  <FieldLabel htmlFor="new-role">{t("users.role")}</FieldLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger id="new-role">
-                      <SelectValue placeholder="Rol seçin">
-                        {(value: string) => (value === "ADMIN" ? "Admin" : "Operatör")}
+                      <SelectValue placeholder={t("users.selectRole")}>
+                        {(value: string) => (value === "ADMIN" ? t("users.roleAdmin") : t("users.roleOperator"))}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="OPERATOR">Operatör</SelectItem>
-                      <SelectItem value="ADMIN">Admin</SelectItem>
+                      <SelectItem value="OPERATOR">{t("users.roleOperator")}</SelectItem>
+                      <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
                     </SelectContent>
                   </Select>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -133,7 +134,7 @@ function CreateUserDialog() {
             />
 
             <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Oluşturuluyor..." : "Oluştur"}
+              {createMutation.isPending ? t("users.creating") : t("users.create")}
             </Button>
           </FieldGroup>
         </form>
