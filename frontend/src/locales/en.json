@@ -19,7 +19,8 @@
     "close": "Close",
     "save": "Save",
     "saving": "Saving...",
-    "logout": "Log out"
+    "logout": "Log out",
+    "menu": "Menu"
   },
   "login": {
     "title": "Sign in to your corporate account.",
@@ -60,6 +61,7 @@
     "title": "Users",
     "addButton": "Add user",
     "loadError": "Could not load users.",
+    "empty": "No users yet.",
     "usernameHeader": "Username",
     "roleHeader": "Role",
     "actionsHeader": "Actions",

@@ -22,6 +22,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import LoadingState from "@/components/ui/loading-state"
+import EmptyState from "@/components/ui/empty-state"
 
 interface TemplateSummary {
   id: number
@@ -78,13 +80,10 @@ function Templates() {
         <Button render={<Link to="/templates/new">{t("templates.addButton")}</Link>} />
       </div>
 
-      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <LoadingState />}
       {isError && <p className="text-destructive">{t("templates.loadError")}</p>}
 
-      {data && data.content.length === 0 && (
-        <p className="text-muted-foreground">{t("templates.empty")}</p>
-      )}
-
+      {data && data.content.length === 0 && <EmptyState message={t("templates.empty")} />}
       {data && data.content.length > 0 && (
         <Table>
           <TableHeader>

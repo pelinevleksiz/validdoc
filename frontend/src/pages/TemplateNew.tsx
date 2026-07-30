@@ -29,6 +29,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 const A4_WIDTH_PX = 2480.3149606299213
 const A4_HEIGHT_PX = 3507.874015748031
 const DISPLAY_WIDTH = 495
+const TOOLBAR_MAX_WIDTH = DISPLAY_WIDTH + 16 + 256
 
 type CanvasSource = HTMLImageElement | HTMLCanvasElement
 
@@ -93,6 +94,7 @@ function TemplateNew() {
 
   const [previewResults, setPreviewResults] = useState<PreviewResult[] | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const { data: ruleTypes } = useQuery({
     queryKey: ["rule-types"],
@@ -397,8 +399,6 @@ function TemplateNew() {
     },
   })
 
-  const [saveError, setSaveError] = useState<string | null>(null)
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post("/api/templates", {
@@ -454,57 +454,59 @@ function TemplateNew() {
       </Field>
 
       {source && (
-        <div className="mb-2 flex flex-wrap items-center gap-2" style={{ width: DISPLAY_WIDTH + 16 + 256 }}>
-          <Button variant="outline" size="sm" onClick={zoomOut}>-</Button>
-          <span className="text-sm text-muted-foreground">{Math.round(zoom * 100)}%</span>
-          <Button variant="outline" size="sm" onClick={zoomIn}>+</Button>
+        <div className="mx-auto mb-2 w-full md:mx-0" style={{ maxWidth: TOOLBAR_MAX_WIDTH }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={zoomOut}>-</Button>
+            <span className="text-sm text-muted-foreground">{Math.round(zoom * 100)}%</span>
+            <Button variant="outline" size="sm" onClick={zoomIn}>+</Button>
 
-          {fileKind === "pdf" && pdfPageCount > 1 && (
-            <>
+            {fileKind === "pdf" && pdfPageCount > 1 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPdfPage(pdfPageNumber - 1)}
+                  disabled={pdfPageNumber <= 1}
+                >
+                  {t("templateNew.previousPage")}
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {t("templateNew.pageOf", { current: pdfPageNumber, total: pdfPageCount })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPdfPage(pdfPageNumber + 1)}
+                  disabled={pdfPageNumber >= pdfPageCount}
+                >
+                  {t("templateNew.nextPage")}
+                </Button>
+              </>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => goToPdfPage(pdfPageNumber - 1)}
-                disabled={pdfPageNumber <= 1}
+                onClick={() => previewMutation.mutate()}
+                disabled={visibleSegments.length === 0 || previewMutation.isPending}
               >
-                {t("templateNew.previousPage")}
+                {previewMutation.isPending ? t("templateNew.previewing") : t("templateNew.preview")}
               </Button>
-              <span className="text-sm text-muted-foreground">
-                {t("templateNew.pageOf", { current: pdfPageNumber, total: pdfPageCount })}
-              </span>
               <Button
-                variant="outline"
                 size="sm"
-                onClick={() => goToPdfPage(pdfPageNumber + 1)}
-                disabled={pdfPageNumber >= pdfPageCount}
+                onClick={resetUpload}
+                className="bg-black text-white hover:bg-black/90"
               >
-                {t("templateNew.nextPage")}
+                {t("templateNew.changeDocument")}
               </Button>
-            </>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => previewMutation.mutate()}
-              disabled={visibleSegments.length === 0 || previewMutation.isPending}
-            >
-              {previewMutation.isPending ? t("templateNew.previewing") : t("templateNew.preview")}
-            </Button>
-            <Button
-              size="sm"
-              onClick={resetUpload}
-              className="bg-black text-white hover:bg-black/90"
-            >
-              {t("templateNew.changeDocument")}
-            </Button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="flex gap-4">
-        <div style={{ width: DISPLAY_WIDTH }}>
+      <div className="flex flex-col items-center gap-4 md:flex-row md:items-start">
+        <div className="mx-auto overflow-x-auto md:mx-0" style={{ width: DISPLAY_WIDTH }}>
           {!source && (
             <div
               onDragOver={(e) => {
@@ -610,7 +612,7 @@ function TemplateNew() {
         </div>
 
         <div
-          className="flex w-64 shrink-0 flex-col overflow-y-auto rounded-md border p-3"
+          className="flex w-full flex-col overflow-y-auto rounded-md border p-3 md:w-64 md:shrink-0"
           style={{ height: displayHeight }}
         >
           <div className="flex flex-col gap-2">
@@ -673,7 +675,7 @@ function TemplateNew() {
         </div>
       </div>
 
-      <div className="mt-4" style={{ width: DISPLAY_WIDTH + 16 + 256 }}>
+      <div className="mx-auto mt-4 w-full md:mx-0" style={{ maxWidth: TOOLBAR_MAX_WIDTH }}>
         {saveError && (
           <div className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {saveError}

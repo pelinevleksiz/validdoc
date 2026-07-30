@@ -15,15 +15,17 @@ function LanguageSwitcher() {
   return (
     <div className="flex items-center gap-1 text-sm">
       <Button
-        variant={language === "tr" ? "default" : "ghost"}
+        variant={language === "tr" ? "default" : "outline"}
         size="sm"
+        className="h-8 w-8 px-0"
         onClick={() => handleChange("tr")}
       >
         TR
       </Button>
       <Button
-        variant={language === "en" ? "default" : "ghost"}
+        variant={language === "en" ? "default" : "outline"}
         size="sm"
+        className="h-8 w-8 px-0"
         onClick={() => handleChange("en")}
       >
         EN

@@ -13,6 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import LoadingState from "@/components/ui/loading-state"
+import EmptyState from "@/components/ui/empty-state"
 
 interface DocumentSummary {
   id: number
@@ -58,12 +60,10 @@ function DocumentsList() {
     <div>
       <h1 className="font-amarego lowercase mb-4 text-3xl">{t("documents.title")}</h1>
 
-      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <LoadingState />}
       {isError && <p className="text-destructive">{t("documents.loadError")}</p>}
 
-      {data && data.content.length === 0 && (
-        <p className="text-muted-foreground">{t("documents.empty")}</p>
-      )}
+      {data && data.content.length === 0 && <EmptyState message={t("documents.empty")} />}
 
       {data && data.content.length > 0 && (
         <>

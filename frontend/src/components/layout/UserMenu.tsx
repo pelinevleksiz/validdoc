@@ -5,22 +5,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
+interface UserMenuProps {
+  showSessionInDropdown?: boolean
+}
 
-function UserMenu() {
+function UserMenu({ showSessionInDropdown = false }: UserMenuProps) {
   const navigate = useNavigate()
   const { logout, username, role } = useAuth()
-
   function handleLogout() {
     logout()
     navigate("/")
   }
-
   const initial = username ? username.charAt(0).toUpperCase() : "?"
   const { t } = useTranslation()
-  
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -29,7 +31,7 @@ function UserMenu() {
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
               {initial}
             </span>
-            <span className="flex flex-col items-start leading-tight">
+            <span className="hidden flex-col items-start leading-tight md:flex">
               <span className="text-sm">{username}</span>
               <span className="text-xs text-muted-foreground">{role}</span>
             </span>
@@ -37,6 +39,17 @@ function UserMenu() {
         }
       />
       <DropdownMenuContent align="end">
+        {showSessionInDropdown && (
+          <>
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <span className="text-sm font-medium">{username}</span>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {role}
+              </span>
+            </div>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={handleLogout}>{t("common.logout")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import LoadingState from "@/components/ui/loading-state"
+import EmptyState from "@/components/ui/empty-state"
 import {
   Table,
   TableBody,
@@ -52,12 +54,10 @@ function AuditLog() {
     <div>
       <h1 className="font-amarego lowercase mb-4 text-3xl">{t("auditLog.title")}</h1>
 
-      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <LoadingState />}
       {isError && <p className="text-destructive">{t("auditLog.loadError")}</p>}
 
-      {data && data.content.length === 0 && (
-        <p className="text-muted-foreground">{t("auditLog.empty")}</p>
-      )}
+      {data && data.content.length === 0 && <EmptyState message={t("auditLog.empty")} />}
 
       {data && data.content.length > 0 && (
         <>

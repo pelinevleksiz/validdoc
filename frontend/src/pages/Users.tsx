@@ -23,6 +23,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import CreateUserDialog from "@/components/users/CreateUserDialog"
+import LoadingState from "@/components/ui/loading-state"
+import EmptyState from "@/components/ui/empty-state"
 
 export interface UserSummary {
   id: number
@@ -80,10 +82,12 @@ function Users() {
         <CreateUserDialog />
       </div>
 
-      {isLoading && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <LoadingState />}
       {isError && <p className="text-destructive">{t("users.loadError")}</p>}
 
-      {data && (
+      {data && data.content.length === 0 && <EmptyState message={t("users.empty")} />}
+
+      {data && data.content.length > 0 && (
         <Table>
           <TableHeader>
             <TableRow>

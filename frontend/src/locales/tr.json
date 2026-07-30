@@ -19,7 +19,8 @@
     "close": "Kapat",
     "save": "Kaydet",
     "saving": "Kaydediliyor...",
-    "logout": "Çıkış yap"
+    "logout": "Çıkış yap",
+    "menu": "Menu"
   },
   "login": {
     "title": "Kurumsal hesabınıza giriş yapın.",
@@ -60,6 +61,7 @@
     "title": "Kullanıcılar",
     "addButton": "Kullanıcı ekle",
     "loadError": "Kullanıcılar yüklenemedi.",
+    "empty": "Henüz kullanıcı yok.",
     "usernameHeader": "Kullanıcı adı",
     "roleHeader": "Rol",
     "actionsHeader": "İşlemler",
