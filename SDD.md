@@ -106,10 +106,13 @@ erDiagram
         bigint id PK
         string username
         string role
+        boolean active
     }
     TEMPLATE {
         bigint id PK
         string name
+        boolean active
+        int page_count
     }
     TEMPLATE_SEGMENT {
         bigint id PK
@@ -173,20 +176,20 @@ erDiagram
 | POST | `/api/auth/login` | Public | Issues a JWT (valid for 10 min) |
 | GET | `/api/users` | ADMIN | Lists users (paginated) |
 | POST | `/api/users` | ADMIN | Creates a new user |
-| DELETE | `/api/users/{id}` | ADMIN | Deletes a user; blocked for the last admin or a user with linked documents |
-| PUT | `/api/users/me/password` | Authenticated | Changes the caller's own password |
+| DELETE | `/api/users/{id}` | ADMIN | Deactivates a user (soft delete — sets `active=false`, does not remove the row); blocked only for the last active admin. Past documents remain linked and visible; no longer blocked by having linked documents. |
+| PUT | `/api/users/me/password` | ADMIN | Changes the caller's own password. Restricted to admins by design — operators do not self-manage passwords; an admin resets an operator's password by deactivating and recreating the account. |
 | GET | `/api/templates` | OPERATOR/ADMIN | Lists templates (paginated) |
 | POST | `/api/templates` | ADMIN | Saves a template with segments and rules (immutable) |
 | GET | `/api/templates/{id}` | OPERATOR/ADMIN | Returns a template's full segment and rule detail |
 | GET | `/api/templates/rule-types` | ADMIN | Returns the fixed rule catalog, flagging which rules take a param and which are ink-based |
 | POST | `/api/templates/preview` | ADMIN | Provides a segment preview without saving |
 | POST | `/api/documents/upload` | OPERATOR/ADMIN | Uploads a document, processes it asynchronously |
-| GET | `/api/documents` | OPERATOR/ADMIN | Lists all documents, newest first (paginated) |
+| GET | `/api/documents` | OPERATOR/ADMIN | Lists documents, newest first (paginated); **scope differs by role** — admins see all documents, operators see only documents they uploaded themselves |
 | GET | `/api/documents/{id}` | OPERATOR/ADMIN | Returns a document and its segment report |
 | GET | `/api/documents/{id}/segments/{segmentId}/image` | OPERATOR/ADMIN | Returns a `PENDING_REVIEW` segment's stored crop image |
-| POST | `/api/documents/{id}/segments/{segmentId}/resolve` | OPERATOR | Applies a one-time manual decision to a `PENDING_REVIEW` segment |
+| POST | `/api/documents/{id}/segments/{segmentId}/resolve` | OPERATOR/ADMIN | Applies a one-time manual decision to a `PENDING_REVIEW` segment |
 | GET | `/api/documents/queue` | OPERATOR/ADMIN | Returns the `PENDING_REVIEW` queue (paginated) |
-| POST | `/api/documents/{id}/verify` | OPERATOR | Applies a manual status |
+| POST | `/api/documents/{id}/verify` | OPERATOR/ADMIN | Applies a manual status |
 | GET/PUT | `/api/admin/validation-settings` | ADMIN | Manages retention, ink threshold, and OCR confidence threshold |
 | GET | `/api/admin/audit-logs` | ADMIN | Lists audit log entries, optionally filtered by `documentId` (paginated) |
 
@@ -202,3 +205,22 @@ erDiagram
 ## 8. Global Exception & Failure Handling
 - Business logic errors are thrown as `ApiException` with an `ErrorCode`; `@RestControllerAdvice` returns them as a localized `{code, message}` payload (based on `Accept-Language`).
 - Engine failures (OCR/PDF/OpenCV/template mismatch) never surface as HTTP errors — they are caught inside the `@Async` pipeline, the document is moved to `PENDING_REVIEW`, and the outcome is written to `audit_logs`.
+
+---
+
+## 9. Frontend Architecture
+
+### 9.1 Stack
+React 19 + Vite + TypeScript, styled with Tailwind CSS 4 and shadcn/ui (Base UI primitives, Nova preset). State/data: TanStack Query for server state, `axios` for HTTP, React Router for navigation, react-hook-form + zod for forms. `react-konva` renders the template segment-drawing canvas; `pdfjs-dist` rasterizes PDF pages client-side (both for the segment canvas and for reading a PDF's page count before upload). i18next drives full TR/EN UI translation, including a client-side mapping of backend `ErrorCode`s to localized strings.
+
+### 9.2 Directory Structure (`frontend/src`)
+`pages/` (one file per route: `Login`, `Dashboard`, `Upload`, `TemplateNew`, `Templates`, `Users`, `Settings`, `AuditLog`, `DocumentsList`, `DocumentDetail`, `ReviewQueue`, `ChangePassword`), `components/ui/` (shadcn primitives), `components/layout/` (`AppLayout`, sidebar, `ProtectedRoute`), `lib/api.ts` (configured axios instance), `locales/` (`tr.json`, `en.json`).
+
+### 9.3 Auth & Session
+The JWT is stored in `localStorage` (chosen over in-memory/React state so a page refresh doesn't drop the session, given the backend's 10-minute token lifetime already bounds the exposure window). `ProtectedRoute` guards routes by role (`allowedRoles` prop); admin-only routes are `/users`, `/change-password`, `/templates`, `/templates/new`, `/settings`, `/audit-logs`. A proactive client-side timer warns of token expiry before the backend rejects a request.
+
+### 9.4 PDF/Image Handling on the Client
+Both the document-upload screen (`Upload.tsx`) and the template-creation canvas (`TemplateNew.tsx`) accept PNG, JPEG, and PDF. For PDF, `pdfjs-dist` parses the file **entirely in the browser** via a dedicated Web Worker (`pdf.worker.min.mjs`, spawned directly with `new Worker(new URL(..., import.meta.url))` and handed to pdf.js via `GlobalWorkerOptions.workerPort` — chosen over the `?url`-import + `workerSrc` pattern for more reliable behavior across bundler backends) — this is how the upload screen can show a file's page count and reject a page-count mismatch before ever calling the backend, and how the template canvas rasterizes a page for segment drawing. This client-side PDF parsing has no relation to the backend's own PDF rasterization (`PdfRasterService`, §1/§2), which independently re-rasterizes the file server-side from the raw bytes at processing time — the frontend's PDF handling exists purely for UI preview/validation, not as a data source for the backend pipeline.
+
+### 9.5 Deployment (Docker/nginx)
+The frontend is built as a static production bundle (multi-stage `Dockerfile`: `node:22-alpine` build stage → `nginx:1.27-alpine` serve stage) and served by its own nginx container, separate from the Spring Boot container (see §1.1). The backend's base URL is baked in at **build time** via the `VITE_API_BASE_URL` build arg (default `http://localhost:8080`, set in `docker-compose.yml`) — the browser talks to the backend directly over this URL, not through nginx as a reverse proxy, and not via the Docker-internal service hostname (`app`), which is unreachable from the host browser. nginx's static-file serving relies on the container's default `mime.types` table; the one addition on top of it is a `.mjs` extension mapping (via a targeted `location ~* \.mjs$` block, not a blanket `types {}` override) needed because pdf.js's worker script (§9.4) ships as `.mjs`, an extension the default table doesn't include.

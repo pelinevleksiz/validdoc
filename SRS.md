@@ -14,8 +14,10 @@
 ### 1.2 Document Upload & Management
 - PDF (**multi-page supported**), PNG, and JPEG formats are accepted; files are processed in memory without being written to disk.
 - Every upload is required to reference a **template**; template-free validation is not supported.
+- An uploaded document's page count must **exactly match** the referenced template's page count; a mismatched file is rejected before processing.
 - The accepted file type is determined from the file's actual content (signature bytes), not from the client-supplied `Content-Type` header alone.
 - Upload requests are rate-limited per user to prevent a single account from overwhelming the processing pipeline.
+- Multiple files can be uploaded in a single batch against the same template; each file is tracked and reported as an independent job.
 
 ### 1.3 Template-Based Segmentation & Rule-Based Validation
 - An admin defines **page- and coordinate-based segments** on a template; each segment is assigned one or more rules from the system's fixed catalogs.
@@ -27,12 +29,20 @@
 ### 1.4 Workflow & Approval Management
 - The upload request returns immediately with `202 Accepted`; document processing runs asynchronously in the background.
 - Document status is derived **deterministically** from segment results: all valid → `VALIDATED`, all empty → `REJECTED_EMPTY`, mixed → `REJECTED_INVALID`.
-- `PENDING_REVIEW` is triggered either by an engine failure (corrupt file, page mismatch) or by any segment falling below the OCR confidence threshold. In the latter case, an operator resolves each pending segment with a one-time, irreversible decision, after which the document's status is recomputed from the final segment outcomes.
-- Every automatic and manual outcome is written to an **audit log**; an operator can manually approve or reject any document regardless of its automatic result.
+- `PENDING_REVIEW` is triggered either by an engine failure (corrupt file, page mismatch) or by any segment falling below the OCR confidence threshold. In the latter case, an operator **or admin** resolves each pending segment with a one-time, irreversible decision, after which the document's status is recomputed from the final segment outcomes.
+- Every automatic and manual outcome is written to an **audit log**; an operator or admin can manually approve or reject any document regardless of its automatic result.
 
 ### 1.5 Multi-Language Support (Turkish / English)
 - API error and feedback messages are served in TR/EN based on the `Accept-Language` header.
 - The OCR scanning language is set independently of the UI language, via a separate parameter at upload time.
+
+### 1.6 Web Client (Frontend)
+- A single-page web client covers the full workflow for both roles: authentication, template creation (segment drawing + rule assignment on a canvas rendering of a sample document), document upload, the pending-review queue, document listing/detail, user management, validation settings, and audit logs.
+- Template creation accepts a **sample document** (PNG, JPEG, or PDF) as the canvas source; for a multi-page PDF, segments are drawn independently per page and the page navigator lets the admin switch pages before drawing.
+- The document upload screen accepts **PDF, PNG, or JPEG**, supports multi-file batches, shows each file's detected page count next to it, and blocks submission for any file whose page count doesn't match the selected template.
+- A document that lands in `PENDING_REVIEW` can be resolved **inline**, within the same upload flow, without navigating to a separate review screen; the dedicated review queue remains available for documents uploaded earlier.
+- The entire UI (not just API error messages) is available in Turkish and English via client-side i18n, including backend error codes, which are mapped to localized strings.
+- The UI is responsive down to a mobile breakpoint (below 768px), collapsing the sidebar into a hamburger menu.
 
 ---
 
@@ -44,7 +54,10 @@ The application is built with Spring Boot 4.x and Java 21; it is packaged as a *
 ### 2.2 OCR Engine Integration
 Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are cropped and read directly from the page image.
 
-### 2.3 Database & Persistence
+### 2.3 Deployment & Containerization
+The full stack (PostgreSQL, backend, frontend) runs via a single `docker-compose.yml`. The frontend is built as a static production bundle and served by an nginx container, separate from the backend container; the two communicate over HTTP using a build-time-configured API base URL, not a shared Docker network hostname reachable from the browser.
+
+### 2.4 Database & Persistence
 - PostgreSQL and Spring Data JPA are used at the data layer; uploaded files are processed in memory only and are never persisted.
 - Once processing completes, only the result (status, segment report, timestamps) is persisted; it is automatically erased once the **retention period** elapses.
 - For a segment awaiting manual review, its cropped image is additionally persisted (encrypted with AES-256-GCM) and is deleted immediately once the segment is resolved, independent of the retention period.
