@@ -3,13 +3,15 @@ import { Link } from "react-router"
 import axios from "axios"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import * as pdfjsLib from "pdfjs-dist"
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
+const pdfWorker = new Worker(new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url), {
+  type: "module",
+})
+pdfjsLib.GlobalWorkerOptions.workerPort = pdfWorker
 
 interface TemplateSummary {
   id: number
@@ -186,13 +188,31 @@ function Upload() {
       pendingFiles.some((pf) => pf.file.name === file.name && pf.file.size === file.size)
     const uniqueNewFiles = newFiles.filter((f) => !isDuplicate(f))
 
-    setUploadError(uniqueNewFiles.length < newFiles.length ? t("upload.duplicateFile") : null)
-
-    const withPageCounts = await Promise.all(
-      uniqueNewFiles.map(async (file) => ({ file, pageCount: await getFilePageCount(file) }))
+    const settled = await Promise.allSettled(
+      uniqueNewFiles.map((file) => getFilePageCount(file).then((pageCount) => ({ file, pageCount })))
     )
-    setPendingFiles((prev) => [...prev, ...withPageCounts])
-    setStep("template")
+
+    const withPageCounts: PendingFile[] = []
+    const failedNames: string[] = []
+    settled.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        withPageCounts.push(result.value)
+      } else {
+        failedNames.push(uniqueNewFiles[i].name)
+        console.error("Dosya okunamadi:", uniqueNewFiles[i].name, result.reason)
+      }
+    })
+
+    if (failedNames.length > 0) {
+      setUploadError(t("upload.pdfReadError", { fileNames: failedNames.join(", ") }))
+    } else {
+      setUploadError(uniqueNewFiles.length < newFiles.length ? t("upload.duplicateFile") : null)
+    }
+
+    if (withPageCounts.length > 0) {
+      setPendingFiles((prev) => [...prev, ...withPageCounts])
+      setStep("template")
+    }
   }
 
   function removeFile(index: number) {

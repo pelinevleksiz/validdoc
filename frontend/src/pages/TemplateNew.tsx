@@ -1,7 +1,6 @@
 import { useRef, useState } from "react"
 import { Stage, Layer, Image as KonvaImage, Rect, Text } from "react-konva"
 import * as pdfjsLib from "pdfjs-dist"
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import axios from "axios"
 import { useTranslation } from "react-i18next"
@@ -24,7 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
+const pdfWorker = new Worker(new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url), {
+  type: "module",
+})
+pdfjsLib.GlobalWorkerOptions.workerPort = pdfWorker
 
 const A4_WIDTH_PX = 2480.3149606299213
 const A4_HEIGHT_PX = 3507.874015748031
@@ -78,6 +80,7 @@ function TemplateNew() {
   const [pdfPageNumber, setPdfPageNumber] = useState(1)
   const [pdfPageCount, setPdfPageCount] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [segments, setSegments] = useState<DraftSegment[]>([])
@@ -148,23 +151,33 @@ function TemplateNew() {
   }
 
   async function processFile(file: File) {
+    setFileError(null)
+
     if (file.type === "application/pdf") {
       setFileKind("pdf")
-      const arrayBuffer = await file.arrayBuffer()
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
-      const doc = await loadingTask.promise
-      setPdfDoc(doc)
-      setPdfPageCount(doc.numPages)
-      setPdfPageNumber(1)
-      await renderPdfPage(doc, 1)
+      try {
+        const arrayBuffer = await file.arrayBuffer()
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+        const doc = await loadingTask.promise
+        setPdfDoc(doc)
+        setPdfPageCount(doc.numPages)
+        setPdfPageNumber(1)
+        await renderPdfPage(doc, 1)
+      } catch (err) {
+        console.error("PDF islenemedi:", err)
+        setFileKind(null)
+        setFileError(t("templateNew.fileReadError"))
+      }
       return
     }
 
     setFileKind("image")
     setPdfDoc(null)
     const reader = new FileReader()
+    reader.onerror = () => setFileError(t("templateNew.fileReadError"))
     reader.onload = () => {
       const img = new window.Image()
+      img.onerror = () => setFileError(t("templateNew.fileReadError"))
       img.onload = () => setSource(img)
       img.src = reader.result as string
     }
@@ -187,6 +200,7 @@ function TemplateNew() {
   function resetUpload() {
     setSource(null)
     setFileKind(null)
+    setFileError(null)
     setPdfDoc(null)
     setPdfPageNumber(1)
     setPdfPageCount(1)
@@ -531,6 +545,7 @@ function TemplateNew() {
               <p className="text-sm text-muted-foreground">
                 {isDragging ? t("templateNew.dropzoneDragging") : t("templateNew.dropzone")}
               </p>
+              {fileError && <p className="text-sm text-destructive">{fileError}</p>}
               <Button onClick={() => fileInputRef.current?.click()}>{t("templateNew.selectFile")}</Button>
               <input
                 ref={fileInputRef}
