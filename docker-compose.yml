@@ -14,7 +14,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
   app:
     build:
       context: .
@@ -32,6 +31,15 @@ services:
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
     ports:
       - "8080:8080"
-
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    depends_on:
+      - app
+    ports:
+      - "5173:80"
 volumes:
   validdoc-pgdata:
