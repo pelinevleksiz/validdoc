@@ -49,17 +49,20 @@ interface TemplateDetail {
   segments: TemplateSegmentDetail[]
 }
 
+const PAGE_SIZE = 20
+
 function ReviewQueue() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [page, setPage] = useState(0)
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [resolveError, setResolveError] = useState<string | null>(null)
 
   const { data: queue, isLoading: queueLoading } = useQuery({
-    queryKey: ["review-queue"],
+    queryKey: ["review-queue", page],
     queryFn: async () => {
-      const res = await api.get<PagedResponse<DocumentSummary>>("/api/documents/queue?page=0&size=50")
+      const res = await api.get<PagedResponse<DocumentSummary>>(`/api/documents/queue?page=${page}&size=${PAGE_SIZE}`)
       return res.data
     },
     enabled: selectedDocId === null,
@@ -149,26 +152,50 @@ function ReviewQueue() {
         )}
 
         {queue && queue.content.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("reviewQueue.fileNameHeader")}</TableHead>
-                <TableHead className="text-right">{t("reviewQueue.actionHeader")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {queue.content.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell>{doc.fileName}</TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" onClick={() => setSelectedDocId(doc.id)}>
-                      {t("reviewQueue.review")}
-                    </Button>
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("reviewQueue.fileNameHeader")}</TableHead>
+                  <TableHead className="text-right">{t("reviewQueue.actionHeader")}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {queue.content.map((doc) => (
+                  <TableRow key={doc.id}>
+                    <TableCell>{doc.fileName}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => setSelectedDocId(doc.id)}>
+                        {t("reviewQueue.review")}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <div className="mt-4 flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+              >
+                {t("common.previous")}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {t("common.page", { current: page + 1, total: queue.totalPages })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(queue.totalPages - 1, p + 1))}
+                disabled={page >= queue.totalPages - 1}
+              >
+                {t("common.next")}
+              </Button>
+            </div>
+          </>
         )}
       </div>
     )

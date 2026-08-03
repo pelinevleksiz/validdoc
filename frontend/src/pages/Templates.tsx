@@ -38,16 +38,19 @@ interface PagedResponse<T> {
   totalPages: number
 }
 
+const PAGE_SIZE = 20
+
 function Templates() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [page, setPage] = useState(0)
   const [templatePendingDeactivation, setTemplatePendingDeactivation] = useState<TemplateSummary | null>(null)
   const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["templates"],
+    queryKey: ["templates", page],
     queryFn: async () => {
-      const res = await api.get<PagedResponse<TemplateSummary>>("/api/templates?page=0&size=50")
+      const res = await api.get<PagedResponse<TemplateSummary>>(`/api/templates?page=${page}&size=${PAGE_SIZE}`)
       return res.data
     },
   })
@@ -85,31 +88,55 @@ function Templates() {
 
       {data && data.content.length === 0 && <EmptyState message={t("templates.empty")} />}
       {data && data.content.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("templates.nameHeader")}</TableHead>
-              <TableHead className="text-right">{t("templates.actionsHeader")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.content.map((template) => (
-              <TableRow key={template.id}>
-                <TableCell>{template.name}</TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => setTemplatePendingDeactivation(template)}
-                  >
-                    {t("templates.deactivate")}
-                  </Button>
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("templates.nameHeader")}</TableHead>
+                <TableHead className="text-right">{t("templates.actionsHeader")}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {data.content.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell>{template.name}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={() => setTemplatePendingDeactivation(template)}
+                    >
+                      {t("templates.deactivate")}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <div className="mt-4 flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+            >
+              {t("common.previous")}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {t("common.page", { current: page + 1, total: data.totalPages })}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
+              disabled={page >= data.totalPages - 1}
+            >
+              {t("common.next")}
+            </Button>
+          </div>
+        </>
       )}
 
       <AlertDialog open={templatePendingDeactivation !== null} onOpenChange={handleOpenChange}>

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useSearchParams } from "react-router"
 import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -40,16 +41,21 @@ interface PagedResponse<T> {
   totalPages: number
 }
 
+const PAGE_SIZE = 20
+
 function Users() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const openCreateOnLoad = searchParams.get("new") === "1"
+  const [page, setPage] = useState(0)
   const [userPendingDeactivation, setUserPendingDeactivation] = useState<UserSummary | null>(null)
   const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["users"],
+    queryKey: ["users", page],
     queryFn: async () => {
-      const res = await api.get<PagedResponse<UserSummary>>("/api/users?page=0&size=50")
+      const res = await api.get<PagedResponse<UserSummary>>(`/api/users?page=${page}&size=${PAGE_SIZE}`)
       return res.data
     },
   })
@@ -79,7 +85,7 @@ function Users() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-amarego lowercase text-3xl">{t("users.title")}</h1>
-        <CreateUserDialog />
+        <CreateUserDialog defaultOpen={openCreateOnLoad} />
       </div>
 
       {isLoading && <LoadingState />}
@@ -88,37 +94,61 @@ function Users() {
       {data && data.content.length === 0 && <EmptyState message={t("users.empty")} />}
 
       {data && data.content.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("users.usernameHeader")}</TableHead>
-              <TableHead>{t("users.roleHeader")}</TableHead>
-              <TableHead className="text-right">{t("users.actionsHeader")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.content.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell>{user.username}</TableCell>
-                <TableCell>
-                  <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
-                    {user.role === "ADMIN" ? t("users.roleAdmin") : t("users.roleOperator")}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => setUserPendingDeactivation(user)}
-                  >
-                    {t("users.deactivate")}
-                  </Button>
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("users.usernameHeader")}</TableHead>
+                <TableHead>{t("users.roleHeader")}</TableHead>
+                <TableHead className="text-right">{t("users.actionsHeader")}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {data.content.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>{user.username}</TableCell>
+                  <TableCell>
+                    <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
+                      {user.role === "ADMIN" ? t("users.roleAdmin") : t("users.roleOperator")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={() => setUserPendingDeactivation(user)}
+                    >
+                      {t("users.deactivate")}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <div className="mt-4 flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+            >
+              {t("common.previous")}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {t("common.page", { current: page + 1, total: data.totalPages })}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
+              disabled={page >= data.totalPages - 1}
+            >
+              {t("common.next")}
+            </Button>
+          </div>
+        </>
       )}
 
       <AlertDialog open={userPendingDeactivation !== null} onOpenChange={handleOpenChange}>
