@@ -121,6 +121,7 @@ The test suite connects to the local Postgres instance; ensure it is running (`d
 | `DELETE /api/users/{id}` | Admin | Deactivates a user (soft delete, `active=false`); blocked only for the last active admin |
 | `GET /api/templates` | Operator/Admin | Lists templates (paginated) |
 | `POST /api/templates` | Admin | Defines a template with segments and rules |
+| `DELETE /api/templates/{id}` | Admin | Deactivates a template (soft delete, `active=false`); it can no longer be selected for new uploads |
 | `GET /api/templates/{id}` | Operator/Admin | Returns a template's full segment and rule detail |
 | `GET /api/templates/rule-types` | Admin | Returns the fixed rule catalog |
 | `POST /api/templates/preview` | Admin | Previews segment extraction without persisting a template |
@@ -130,19 +131,27 @@ The test suite connects to the local Postgres instance; ensure it is running (`d
 | `GET /api/documents/{id}/segments/{segmentId}/image` | Operator/Admin | Returns a `PENDING_REVIEW` segment's stored crop image |
 | `POST /api/documents/{id}/segments/{segmentId}/resolve` | Operator/Admin | Applies a one-time manual decision to a `PENDING_REVIEW` segment |
 | `GET /api/documents/queue` | Operator/Admin | Lists documents in `PENDING_REVIEW` |
-| `POST /api/documents/{id}/verify` | Operator/Admin | Manually approves or rejects a document |
+| `GET /api/documents/stats` | Operator/Admin | Returns dashboard counters (today's uploads, pending review, weekly validation rate); scope differs by role like `GET /api/documents` |
 | `GET /api/admin/audit-logs` | Admin | Returns the audit log, newest first |
 | `GET/PUT /api/admin/validation-settings` | Admin | Reads or updates retention period, ink-density threshold, and OCR confidence threshold |
 | `GET /actuator/health` | Public | Health check |
 
 ## Frontend Integration
 
-CORS is configured via `app.cors.allowed-origins` in `application.properties`, currently set to `http://localhost:5173`. This matches both the Vite dev server's default port and the port `docker-compose.yml` maps the production nginx `frontend` service to, so no change is needed for either workflow — only update it if you deliberately move either one to a different port.
+CORS is configured via `app.cors.allowed-origins` in `application.properties`, defaulting to `http://localhost:5173` unless the `CORS_ALLOWED_ORIGINS` environment variable is set. This default matches both the Vite dev server's default port and the port `docker-compose.yml` maps the production nginx `frontend` service to, so no change is needed for local development — set `CORS_ALLOWED_ORIGINS` to the real frontend origin for any other deployment (see [Production Configuration](#production-configuration)).
 
 The frontend's nginx config (`frontend/nginx.conf`) serves static assets using the container's default `mime.types` table, plus one explicit addition for the `.mjs` extension (used by the pdf.js worker script — see `SDD.md` §9.4/§9.5). Avoid replacing this with a server-wide `types {}` block instead of the current per-extension `location` block — in nginx, a `types {}` block declared at server/location level fully replaces the inherited mime-type table rather than extending it, which would silently break the `Content-Type` of every other static asset (`.css`, `.svg`, `.woff`, etc.) served by that block.
+
+`index.html` is served with `Cache-Control: no-cache, no-store, must-revalidate`. Routes are code-split (`React.lazy`) into content-hashed chunk files that change on every build; if a browser cached `index.html` across deploys, it would keep pointing at chunk filenames the server no longer has, surfacing as "Failed to fetch dynamically imported module" errors on navigation. `/assets/` (the hashed chunks themselves) are still cached for a year, since a changed file always gets a new filename.
+
+## Production Configuration
+
+An `application-prod.properties` profile is available for production deployments, activated by setting the `SPRING_PROFILES_ACTIVE=prod` environment variable on the `app` service. It disables SQL statement logging (`spring.jpa.show-sql=false`) and reduces log verbosity (`logging.level.root=WARN`). It is not enabled by default, since `docker-compose.yml` is used for local development as well — the compose file passes the variable through from the environment, so adding `SPRING_PROFILES_ACTIVE=prod` to `.env` is enough to switch, with no edit to the compose file itself.
+
+Also set `CORS_ALLOWED_ORIGINS` to the real frontend origin in production — it defaults to `http://localhost:5173`, which is only correct for local development.
 
 ## Known Limitations
 
 - Login and upload rate limiters are held in-memory per instance and are not shared across replicas; a distributed store (e.g. Redis) is required before horizontal scaling. See `SRS.md` §2.1.
 - Secrets in `.env` are intended for local development only and must be rotated before any production deployment.
-- The template list screen's "deactivate" button calls `DELETE /api/templates/{id}` from the frontend, but no such endpoint currently exists on the backend (`TemplateController` has no delete/deactivate mapping) — the action fails. Templates only support the create/list/preview endpoints documented above.
+- Schema management still relies on `spring.jpa.hibernate.ddl-auto=update` in both profiles (Hibernate auto-creates/alters tables from the entity model) rather than a versioned migration tool like Flyway or Liquibase. This is a deliberate, not-yet-made decision — moving off `ddl-auto=update` requires writing a full migration baseline first and should be scheduled as its own piece of work, not folded into an unrelated change.

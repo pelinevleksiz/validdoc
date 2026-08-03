@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { getLanguage, setLanguage, type Language } from "@/lib/language"
 import i18n from "@/lib/i18n"
 
@@ -15,17 +16,17 @@ function LanguageSwitcher() {
   return (
     <div className="flex items-center gap-1 text-sm">
       <Button
-        variant={language === "tr" ? "default" : "outline"}
+        variant="outline"
         size="sm"
-        className="h-8 w-8 px-0"
+        className={cn("h-8 w-8 px-0", language === "tr" ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}
         onClick={() => handleChange("tr")}
       >
         TR
       </Button>
       <Button
-        variant={language === "en" ? "default" : "outline"}
+        variant="outline"
         size="sm"
-        className="h-8 w-8 px-0"
+        className={cn("h-8 w-8 px-0", language === "en" ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}
         onClick={() => handleChange("en")}
       >
         EN

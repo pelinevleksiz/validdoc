@@ -30,7 +30,7 @@
 - The upload request returns immediately with `202 Accepted`; document processing runs asynchronously in the background.
 - Document status is derived **deterministically** from segment results: all valid → `VALIDATED`, all empty → `REJECTED_EMPTY`, mixed → `REJECTED_INVALID`.
 - `PENDING_REVIEW` is triggered either by an engine failure (corrupt file, page mismatch) or by any segment falling below the OCR confidence threshold. In the latter case, an operator **or admin** resolves each pending segment with a one-time, irreversible decision, after which the document's status is recomputed from the final segment outcomes.
-- Every automatic and manual outcome is written to an **audit log**; an operator or admin can manually approve or reject any document regardless of its automatic result.
+- Every automatic and manual segment outcome is written to an **audit log**.
 
 ### 1.5 Multi-Language Support (Turkish / English)
 - API error and feedback messages are served in TR/EN based on the `Accept-Language` header.

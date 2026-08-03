@@ -29,7 +29,7 @@ function MobileSessionToggle() {
       type="button"
       onClick={() => setExpanded((prev) => !prev)}
       className={cn(
-        "flex h-9 flex-row-reverse items-center gap-1.5 overflow-hidden rounded-md border bg-background px-2 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
+        "flex h-9 flex-row-reverse items-center gap-1.5 overflow-hidden rounded-md border border-muted-foreground/20 px-2 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
         expanded ? "w-20" : "w-9"
       )}
     >
