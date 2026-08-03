@@ -10,7 +10,7 @@ For detailed requirements and architecture, see [`SRS.md`](SRS.md) and [`SDD.md`
 
 **Backend**
 - Java 21, Spring Boot 4.1.0
-- PostgreSQL 16
+- PostgreSQL 16, with schema managed by Flyway migrations
 - Tesseract OCR (Tess4J), Turkish language pack
 - OpenCV, for ink-density (signature/stamp) detection
 - Spring Security with stateless JWT authentication
@@ -102,6 +102,21 @@ To rebuild and test the production frontend build (the one actually served by ng
 docker compose up -d --build frontend
 ```
 
+## Database Migrations
+
+The schema is managed by Flyway, not by Hibernate. Migration files live in `src/main/resources/db/migration` and follow the `V<n>__<description>.sql` naming convention; Flyway applies any not-yet-run migrations automatically on startup and records them in the `flyway_schema_history` table.
+
+Hibernate runs with `spring.jpa.hibernate.ddl-auto=validate`, so it never alters the schema itself — it only verifies that the entity model matches what the migrations produced. If they disagree, the application fails to start rather than drifting silently.
+
+To change the schema, add a new migration file with the next version number (e.g. `V2__add_document_note.sql`) alongside the entity change. Never edit a migration that has already been applied: Flyway stores a checksum of each file and refuses to start if a previously-run migration has changed.
+
+To rebuild the database from scratch during development (this deletes all data):
+
+```powershell
+docker compose down -v
+docker compose up -d
+```
+
 ## Testing
 
 ```powershell
@@ -154,4 +169,3 @@ Also set `CORS_ALLOWED_ORIGINS` to the real frontend origin in production — it
 
 - Login and upload rate limiters are held in-memory per instance and are not shared across replicas; a distributed store (e.g. Redis) is required before horizontal scaling. See `SRS.md` §2.1.
 - Secrets in `.env` are intended for local development only and must be rotated before any production deployment.
-- Schema management still relies on `spring.jpa.hibernate.ddl-auto=update` in both profiles (Hibernate auto-creates/alters tables from the entity model) rather than a versioned migration tool like Flyway or Liquibase. This is a deliberate, not-yet-made decision — moving off `ddl-auto=update` requires writing a full migration baseline first and should be scheduled as its own piece of work, not folded into an unrelated change.
