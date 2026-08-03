@@ -1,8 +1,10 @@
 import { lazy, Suspense, type ReactNode } from "react"
 import { createBrowserRouter, RouterProvider } from "react-router"
 import ProtectedRoute from "@/components/ProtectedRoute"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import AppLayout from "@/components/layout/AppLayout"
 import LoadingState from "@/components/ui/loading-state"
+import NotFound from "@/pages/NotFound"
 
 const Login = lazy(() => import("@/pages/Login"))
 const Dashboard = lazy(() => import("@/pages/Dashboard"))
@@ -85,10 +87,15 @@ const router = createBrowserRouter([
       },
     ],
   },
+  { path: "*", element: <NotFound /> },
 ])
 
 function App() {
-  return <RouterProvider router={router} />
+  return (
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
+  )
 }
 
 export default App

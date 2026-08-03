@@ -20,7 +20,10 @@
     "save": "Kaydet",
     "saving": "Kaydediliyor...",
     "logout": "Çıkış yap",
-    "menu": "Menu"
+    "menu": "Menu",
+    "notFoundTitle": "Sayfa bulunamadı",
+    "notFoundDescription": "Aradığınız sayfa mevcut değil ya da taşınmış olabilir.",
+    "notFoundBackLink": "Panele dön"
   },
   "login": {
     "title": "Kurumsal hesabınıza giriş yapın.",
@@ -43,7 +46,16 @@
     "DUPLICATE_RECORD": "Bu isimde bir kayıt zaten var."
   },
   "dashboard": {
-    "placeholder": "Bu sayfa henüz yapım aşamasında."
+    "statsTitle": "Özet",
+    "statsToday": "Bugün yüklenen",
+    "statsPending": "İncelemede bekleyen",
+    "statsWeeklyRate": "Haftalık geçerlilik oranı",
+    "statsNoData": "Henüz veri yok",
+    "statsLoadError": "İstatistikler yüklenemedi.",
+    "shortcutUploadDesc": "Yeni bir belge tara ve doğrula",
+    "shortcutTemplateDesc": "Yeni bir tarama şablonu tanımla",
+    "shortcutUserDesc": "Sisteme yeni bir kullanıcı ekle",
+    "shortcutReviewDesc": "Bekleyen incelemeleri tamamla"
   },
   "templates": {
     "title": "Şablonlar",

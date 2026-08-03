@@ -20,7 +20,10 @@
     "save": "Save",
     "saving": "Saving...",
     "logout": "Log out",
-    "menu": "Menu"
+    "menu": "Menu",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "The page you're looking for doesn't exist or may have moved.",
+    "notFoundBackLink": "Back to dashboard"
   },
   "login": {
     "title": "Sign in to your corporate account.",
@@ -43,7 +46,16 @@
     "DUPLICATE_RECORD": "A record with this name already exists."
   },
   "dashboard": {
-    "placeholder": "This page is under construction."
+    "statsTitle": "Overview",
+    "statsToday": "Uploaded today",
+    "statsPending": "Pending review",
+    "statsWeeklyRate": "Weekly validation rate",
+    "statsNoData": "No data yet",
+    "statsLoadError": "Could not load stats.",
+    "shortcutUploadDesc": "Scan and validate a new document",
+    "shortcutTemplateDesc": "Define a new scanning template",
+    "shortcutUserDesc": "Add a new user to the system",
+    "shortcutReviewDesc": "Work through pending reviews"
   },
   "templates": {
     "title": "Templates",
