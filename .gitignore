@@ -38,3 +38,4 @@ build/
 test.png
 *.log
 .env
+build-log.txt
