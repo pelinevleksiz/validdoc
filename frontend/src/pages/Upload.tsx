@@ -399,6 +399,11 @@ function Upload() {
           <p className="text-sm text-muted-foreground">
             {isDragging ? t("upload.dropzoneDragging") : t("upload.dropzone")}
           </p>
+          {uploadError && (
+            <div className="mx-4 rounded-md bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">
+              {uploadError}
+            </div>
+          )}
           <Button onClick={() => fileInputRef.current?.click()}>{t("upload.selectFile")}</Button>
         </div>
       )}
