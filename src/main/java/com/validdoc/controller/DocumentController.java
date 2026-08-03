@@ -1,6 +1,6 @@
 package com.validdoc.controller;
 
-import com.validdoc.dto.request.VerificationRequest;
+import com.validdoc.dto.response.DocumentStatsResponse;
 import com.validdoc.dto.response.DocumentSummaryResponse;
 import com.validdoc.dto.response.PagedResponse;
 import com.validdoc.exception.ApiException;
@@ -21,9 +21,9 @@ import com.validdoc.repository.UserRepository;
 import com.validdoc.security.UploadRateLimiter;
 import com.validdoc.service.DocumentService;
 import com.validdoc.service.FileSignatureValidator;
-import com.validdoc.service.ValidationSettingsService;
 import jakarta.validation.Valid;
-import org.springframework.context.MessageSource;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -35,11 +35,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import com.validdoc.dto.request.SegmentResolveRequest;
 
@@ -47,14 +47,14 @@ import com.validdoc.dto.request.SegmentResolveRequest;
 @RequestMapping("/api/documents")
 public class DocumentController {
 
+    private static final String PDF_CONTENT_TYPE = "application/pdf";
+
     private final DocumentRepository documentRepository;
     private final TemplateRepository templateRepository;
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
     private final SegmentImageRepository segmentImageRepository;
     private final DocumentService documentService;
-    private final ValidationSettingsService validationSettingsService;
-    private final MessageSource messageSource;
     private final UploadRateLimiter uploadRateLimiter;
 
     public DocumentController(DocumentRepository documentRepository,
@@ -63,8 +63,6 @@ public class DocumentController {
                               AuditLogRepository auditLogRepository,
                               SegmentImageRepository segmentImageRepository,
                               DocumentService documentService,
-                              ValidationSettingsService validationSettingsService,
-                              MessageSource messageSource,
                               UploadRateLimiter uploadRateLimiter) {
         this.documentRepository = documentRepository;
         this.templateRepository = templateRepository;
@@ -72,8 +70,6 @@ public class DocumentController {
         this.auditLogRepository = auditLogRepository;
         this.segmentImageRepository = segmentImageRepository;
         this.documentService = documentService;
-        this.validationSettingsService = validationSettingsService;
-        this.messageSource = messageSource;
         this.uploadRateLimiter = uploadRateLimiter;
     }
 
@@ -102,6 +98,11 @@ public class DocumentController {
 
         Template template = templateRepository.findById(templateId)
                 .orElseThrow(() -> new ApiException(ErrorCode.TEMPLATE_NOT_FOUND, String.valueOf(templateId)));
+
+        int actualPageCount = detectPageCount(fileBytes, detectedContentType);
+        if (actualPageCount != template.getPageCount()) {
+            throw new ApiException(ErrorCode.PAGE_COUNT_MISMATCH, actualPageCount, template.getPageCount());
+        }
 
         DocumentMetadata document = new DocumentMetadata();
         document.setFileName(file.getOriginalFilename());
@@ -179,35 +180,46 @@ public class DocumentController {
         return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
     }
 
-    @PostMapping("/{id}/verify")
+    @GetMapping("/stats")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<Map<String, String>> verify(@PathVariable Long id,
-                                                      @Valid @RequestBody VerificationRequest request,
-                                                      Authentication authentication,
-                                                      Locale locale) {
-        DocumentStatus target = request.getStatus();
-        if (target != DocumentStatus.VALIDATED
-                && target != DocumentStatus.REJECTED_EMPTY
-                && target != DocumentStatus.REJECTED_INVALID) {
-            throw new ApiException(ErrorCode.INVALID_DOCUMENT_STATUS, target);
-        }
-
-        DocumentMetadata document = documentRepository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
-
-        User operator = userRepository.findByUsernameAndActiveTrue(authentication.getName())
+    public ResponseEntity<DocumentStatsResponse> stats(Authentication authentication) {
+        User currentUser = userRepository.findByUsernameAndActiveTrue(authentication.getName())
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
 
-        document.setStatus(target);
-        document.setOperator(operator);
-        document.setProcessedAt(LocalDateTime.now());
-        document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
-        documentRepository.save(document);
+        User scopeUser = currentUser.getRole() == UserRole.ADMIN ? null : currentUser;
 
-        auditLogRepository.save(new AuditLog(document.getId(), "MANUAL_" + target.name(), operator.getUsername()));
+        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
-        String message = messageSource.getMessage("message.document.status_updated", null, locale);
-        return ResponseEntity.ok(Map.of("message", message));
+        long todayUploads = documentRepository.countUploadsSince(startOfToday, scopeUser);
+        long pendingReview = documentRepository.countByStatus(DocumentStatus.PENDING_REVIEW);
+
+        long validated = 0;
+        long rejected = 0;
+        for (Object[] row : documentRepository.countTerminalStatusesSince(sevenDaysAgo, scopeUser)) {
+            DocumentStatus status = (DocumentStatus) row[0];
+            long count = (Long) row[1];
+            if (status == DocumentStatus.VALIDATED) {
+                validated = count;
+            } else {
+                rejected += count;
+            }
+        }
+        long totalTerminal = validated + rejected;
+        Double weeklyValidationRate = totalTerminal > 0 ? (validated * 100.0 / totalTerminal) : null;
+
+        return ResponseEntity.ok(new DocumentStatsResponse(todayUploads, pendingReview, weeklyValidationRate));
+    }
+
+    private int detectPageCount(byte[] fileBytes, String contentType) {
+        if (!PDF_CONTENT_TYPE.equals(contentType)) {
+            return 1;
+        }
+        try (PDDocument document = Loader.loadPDF(fileBytes)) {
+            return document.getNumberOfPages();
+        } catch (IOException e) {
+            throw new ApiException(ErrorCode.PDF_UNREADABLE);
+        }
     }
 
     private DocumentSummaryResponse toSummary(DocumentMetadata document) {

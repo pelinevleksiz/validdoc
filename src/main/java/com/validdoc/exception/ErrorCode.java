@@ -27,6 +27,8 @@ public enum ErrorCode {
     INVALID_SEGMENT_RULE_COMBINATION(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_combination"),
     INVALID_RULE_PARAM(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_param"),
     TEMPLATE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "error.document.template_id_required"),
+    PDF_UNREADABLE(HttpStatus.BAD_REQUEST, "error.document.pdf_unreadable"),
+    PAGE_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "error.document.page_count_mismatch"),
     PREVIEW_FAILED(HttpStatus.BAD_REQUEST, "error.template.preview_failed"),
     MALFORMED_REQUEST_BODY(HttpStatus.BAD_REQUEST, "error.request.malformed_body"),
     INTERNAL_UNEXPECTED(HttpStatus.INTERNAL_SERVER_ERROR, "error.internal.unexpected");
