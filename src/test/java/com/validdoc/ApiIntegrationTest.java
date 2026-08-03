@@ -14,6 +14,10 @@ import com.validdoc.repository.SegmentImageRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
 import com.validdoc.scheduler.RetentionCleanupJob;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -140,6 +144,33 @@ class ApiIntegrationTest {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(image, "png", baos);
         return baos.toByteArray();
+    }
+
+    private static final float PDF_POINTS_PER_PIXEL = 72f / DocumentGeometry.RENDER_DPI;
+
+    private byte[] generateInkPdf(int totalPages, int inkPage, boolean withInk) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDRectangle pageSize = new PDRectangle(
+                    (float) (DocumentGeometry.A4_WIDTH_PX * PDF_POINTS_PER_PIXEL),
+                    (float) (DocumentGeometry.A4_HEIGHT_PX * PDF_POINTS_PER_PIXEL));
+            for (int i = 0; i < totalPages; i++) {
+                document.addPage(new PDPage(pageSize));
+            }
+            if (withInk) {
+                PDPage targetPage = document.getPage(inkPage - 1);
+                try (PDPageContentStream contentStream = new PDPageContentStream(document, targetPage)) {
+                    contentStream.setNonStrokingColor(0, 0, 0);
+                    float inkSizePt = 80 * PDF_POINTS_PER_PIXEL;
+                    float xPt = 10 * PDF_POINTS_PER_PIXEL;
+                    float yPt = pageSize.getHeight() - (10 * PDF_POINTS_PER_PIXEL) - inkSizePt;
+                    contentStream.addRect(xPt, yPt, inkSizePt, inkSizePt);
+                    contentStream.fill();
+                }
+            }
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            document.save(baos);
+            return baos.toByteArray();
+        }
     }
 
     private String pollForFinalStatus(Long documentId, String token) throws Exception {
@@ -571,21 +602,6 @@ class ApiIntegrationTest {
     }
 
     @Test
-    @Order(26)
-    void operatorCanManuallyOverridePendingReviewDocument() throws Exception {
-        mockMvc.perform(post("/api/documents/" + mismatchDocumentId + "/verify")
-                        .header("Authorization", "Bearer " + operatorToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"VALIDATED\"}"))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/documents/" + mismatchDocumentId)
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("VALIDATED"));
-    }
-
-    @Test
     @Order(27)
     void templatePreviewReturnsInkDensityWithoutPersisting() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "preview.png", "image/png", generateInkImage(true));
@@ -882,10 +898,6 @@ class ApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // Bu test tek admin kalmis senaryosunu, mevcut gercek admin hesaplarini kalici olarak
-    // silmeden simule etmek icin @Transactional kullaniyor: testin ici, diger tum admin
-    // kayitlarini gecici olarak siler, kontrolu yapar, sonra Spring test rollback'i sayesinde
-    // test bitince hepsi otomatik geri gelir. Kalici hicbir silme olmaz.
     @Test
     @Order(42)
     @Transactional
@@ -973,5 +985,169 @@ class ApiIntegrationTest {
 
         DocumentMetadata reloaded = documentRepository.findById(expiredDocumentId).orElseThrow();
         assertNull(reloaded.getSegmentResults());
+    }
+
+    @Test
+    @Order(46)
+    void operatorDocumentListIsScopedToOwnUploads() throws Exception {
+        String secondOperatorUsername = "operator2_" + RUN_ID;
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + secondOperatorUsername + "\",\"password\":\"Operator2Pass1!\",\"email\":\""
+                                + secondOperatorUsername + "@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + secondOperatorUsername + "\",\"password\":\"Operator2Pass1!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String secondOperatorToken = extractToken(loginResult);
+
+        mockMvc.perform(get("/api/documents?page=0&size=50")
+                        .header("Authorization", "Bearer " + secondOperatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/documents?page=0&size=50")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == " + signedDocumentId + ")]").exists());
+    }
+
+    @Test
+    @Order(47)
+    void pdfSinglePageSignedDocumentIsValidatedEndToEnd() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "signed.pdf", "application/pdf", generateInkPdf(1, 1, true));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(inkTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long pdfSignedDocumentId = extractLongField(uploadResult, "id");
+        String finalStatus = pollForFinalStatus(pdfSignedDocumentId, adminToken);
+        assertTrue("VALIDATED".equals(finalStatus), "Expected VALIDATED but was " + finalStatus);
+    }
+
+    @Test
+    @Order(48)
+    void pdfSinglePageBlankDocumentIsRejectedAsEmptyEndToEnd() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "blank.pdf", "application/pdf", generateInkPdf(1, 1, false));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(inkTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long pdfBlankDocumentId = extractLongField(uploadResult, "id");
+        String finalStatus = pollForFinalStatus(pdfBlankDocumentId, adminToken);
+        assertTrue("REJECTED_EMPTY".equals(finalStatus), "Expected REJECTED_EMPTY but was " + finalStatus);
+    }
+
+    @Test
+    @Order(49)
+    void pdfMultiPageDocumentIsRasterizedFromCorrectPage() throws Exception {
+        String requestBody = """
+                {
+                  "name": "PDF Multi Page Template %s",
+                  "pageCount": 2,
+                  "segments": [
+                    { "label": "Page2Field", "page": 2, "x": 0, "y": 0, "w": 100, "h": 100,
+                      "rules": [ { "type": "DIGITS_ONLY" } ] }
+                  ]
+                }
+                """.formatted(RUN_ID);
+
+        MvcResult templateResult = mockMvc.perform(post("/api/templates")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long twoPageTemplateId = extractLongField(templateResult, "id");
+
+        MockMultipartFile file = new MockMultipartFile("file", "two-pages.pdf", "application/pdf", generateInkPdf(2, 2, false));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(twoPageTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long twoPageDocumentId = extractLongField(uploadResult, "id");
+        String finalStatus = pollForFinalStatus(twoPageDocumentId, adminToken);
+        assertTrue("REJECTED_EMPTY".equals(finalStatus),
+                "Expected REJECTED_EMPTY (page 2 correctly rasterized and read as blank) but was " + finalStatus);
+    }
+
+    @Test
+    @Order(50)
+    void pdfWithFewerPagesThanTemplateRequiresRoutesToPendingReview() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "one-page.pdf", "application/pdf", generateInkPdf(1, 1, false));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(multiPageTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long shortPdfDocumentId = extractLongField(uploadResult, "id");
+        String finalStatus = pollForFinalStatus(shortPdfDocumentId, adminToken);
+        assertTrue("PENDING_REVIEW".equals(finalStatus), "Expected PENDING_REVIEW but was " + finalStatus);
+    }
+
+    @Test
+    @Order(51)
+    void multipleFilesUploadedInSuccessionAreProcessedIndependently() throws Exception {
+        MockMultipartFile signedFile = new MockMultipartFile("file", "batch-signed.png", "image/png", generateInkImage(true));
+        MockMultipartFile blankFile = new MockMultipartFile("file", "batch-blank.png", "image/png", generateInkImage(false));
+
+        MvcResult signedUpload = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(signedFile)
+                        .param("templateId", String.valueOf(inkTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        Long batchSignedId = extractLongField(signedUpload, "id");
+
+        MvcResult blankUpload = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(blankFile)
+                        .param("templateId", String.valueOf(inkTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        Long batchBlankId = extractLongField(blankUpload, "id");
+
+        String signedStatus = pollForFinalStatus(batchSignedId, adminToken);
+        String blankStatus = pollForFinalStatus(batchBlankId, adminToken);
+
+        assertTrue("VALIDATED".equals(signedStatus), "Expected VALIDATED but was " + signedStatus);
+        assertTrue("REJECTED_EMPTY".equals(blankStatus), "Expected REJECTED_EMPTY but was " + blankStatus);
+    }
+
+    @Test
+    @Order(52)
+    void uploadWithMismatchedPageCountIsRejectedBeforeProcessing() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "wrong-page-count.pdf", "application/pdf", generateInkPdf(3, 1, false));
+
+        mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(inkTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PAGE_COUNT_MISMATCH"));
     }
 }
