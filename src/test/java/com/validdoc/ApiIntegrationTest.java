@@ -64,7 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class ApiIntegrationTest {
+class ApiIntegrationTest extends AbstractIntegrationTest {
 
     private static final String RATE_LIMIT_TEST_REMOTE_ADDR = "203.0.113.10";
     private static final String AUX_LOGIN_REMOTE_ADDR = "203.0.113.30";
