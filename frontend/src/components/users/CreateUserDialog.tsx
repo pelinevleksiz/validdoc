@@ -39,10 +39,10 @@ type CreateUserValues = z.infer<typeof createUserSchema>
 
 const KNOWN_ERROR_CODES = ["DUPLICATE_RECORD"]
 
-function CreateUserDialog() {
+function CreateUserDialog({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
 
   const form = useForm<CreateUserValues>({
