@@ -14,6 +14,8 @@ For detailed requirements and architecture, see [`SRS.md`](SRS.md) and [`SDD.md`
 - Tesseract OCR (Tess4J), Turkish language pack
 - OpenCV, for ink-density (signature/stamp) detection
 - Spring Security with stateless JWT authentication
+- springdoc-openapi for generated, interactive API documentation
+- Testcontainers for integration tests against a disposable database
 
 **Frontend**
 - React 19 + Vite + TypeScript, Tailwind CSS 4 + shadcn/ui
@@ -45,7 +47,11 @@ Replace the placeholder values in `.env` with generated secrets:
 [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(18))   # POSTGRES_PASSWORD / BOOTSTRAP_ADMIN_PASSWORD
 ```
 
-`.env` is excluded from version control via `.gitignore` and must never be committed.
+`.env` is excluded from version control via `.gitignore` and must never be committed. Only `.env.example` is tracked, and it holds obvious placeholders rather than working values.
+
+The application refuses to start if `JWT_SECRET`, `ENCRYPTION_SECRET_KEY` or `BOOTSTRAP_ADMIN_PASSWORD` is empty or still equal to one of those published placeholders, or if `JWT_SECRET` is shorter than the 32 bytes HMAC-SHA256 requires (`SecretsValidator`). Copying `.env.example` and forgetting to replace a value therefore fails loudly at startup instead of silently signing tokens with a key that is public in this repository.
+
+To rotate a secret, generate a new value with the commands above, replace it in `.env`, and restart the affected service (`docker compose up -d --force-recreate app`). Rotating `JWT_SECRET` invalidates all issued tokens, so every signed-in user has to log in again. Rotating `ENCRYPTION_SECRET_KEY` is different in kind: stored segment results and segment images are encrypted with it, so previously stored rows become unreadable — only rotate it together with a purge of that data, or plan a re-encryption step.
 
 ### 2. Build and Run
 
@@ -123,7 +129,17 @@ docker compose up -d
 .\mvnw.cmd clean test
 ```
 
-The test suite connects to the local Postgres instance; ensure it is running (`docker compose up -d`) before executing tests.
+Integration tests do not use the development database. Each run starts a throwaway PostgreSQL container via Testcontainers, applies the Flyway migrations to it, and discards it afterwards, so the suite never reads or writes the data you see in the running application. Docker Desktop must be running; no `docker compose up` is required.
+
+The container is created once in `AbstractIntegrationTest` and shared by every test class, so the suite pays the startup cost only once. Test classes connect to it by extending that base class, which overrides the datasource properties at runtime.
+
+## API Documentation
+
+With the application running, an interactive OpenAPI 3.1 view of every endpoint is served at **http://localhost:8080/swagger-ui.html**, generated from the controllers themselves rather than maintained by hand.
+
+Most endpoints require a JWT. Call `POST /api/auth/login` from the page, copy the `token` from the response, then press **Authorize** and paste it; subsequent calls from the page will carry the bearer token. The token lifetime is 10 minutes, after which you need to authorize again.
+
+Both the UI and the raw schema are disabled under the `prod` profile (`springdoc.swagger-ui.enabled=false`, `springdoc.api-docs.enabled=false`), so a production deployment does not publish its API surface.
 
 ## API Reference
 
@@ -150,6 +166,8 @@ The test suite connects to the local Postgres instance; ensure it is running (`d
 | `GET /api/admin/audit-logs` | Admin | Returns the audit log, newest first |
 | `GET/PUT /api/admin/validation-settings` | Admin | Reads or updates retention period, ink-density threshold, and OCR confidence threshold |
 | `GET /actuator/health` | Public | Health check |
+| `GET /swagger-ui.html` | Public | Interactive API documentation (disabled under the `prod` profile) |
+| `GET /v3/api-docs` | Public | OpenAPI 3.1 schema in JSON (disabled under the `prod` profile) |
 
 ## Frontend Integration
 
@@ -165,7 +183,13 @@ An `application-prod.properties` profile is available for production deployments
 
 Also set `CORS_ALLOWED_ORIGINS` to the real frontend origin in production — it defaults to `http://localhost:5173`, which is only correct for local development.
 
+The compose file already applies a few deployment defaults that are safe for both local and real use: the PostgreSQL port is published to `127.0.0.1` only, so the database is reachable from this machine but not from anything else on the network; every service is set to `restart: unless-stopped`; and the `app` service exposes a health check against `/actuator/health`, so `docker compose ps` reports whether the application is actually serving rather than merely started.
+
+For a real deployment, review the following in addition: drop the `postgres` port mapping entirely (the `app` service reaches the database over the compose network, not the host), put the frontend and backend behind TLS, and move secrets out of `.env` into whatever secret store the target environment provides.
+
 ## Known Limitations
 
 - Login and upload rate limiters are held in-memory per instance and are not shared across replicas; a distributed store (e.g. Redis) is required before horizontal scaling. See `SRS.md` §2.1.
-- Secrets in `.env` are intended for local development only and must be rotated before any production deployment.
+- Secrets live in a local `.env` file rather than a managed secret store. Startup validation prevents the published placeholders from being used, but it cannot tell a weak hand-written value from a strong generated one.
+- Earlier commits in this repository's history contain `.env` values that were later rotated. They no longer unlock anything, and the history has deliberately not been rewritten, since doing so would change every commit hash for no security gain.
+- Application logs are unstructured and carry no request correlation id, which makes tracing a single request across the async processing pipeline harder than it needs to be.

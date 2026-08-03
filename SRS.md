@@ -55,7 +55,9 @@ The application is built with Spring Boot 4.x and Java 21; it is packaged as a *
 Tesseract (Tess4J) is integrated locally for OCR; segment coordinates are cropped and read directly from the page image.
 
 ### 2.3 Deployment & Containerization
-The full stack (PostgreSQL, backend, frontend) runs via a single `docker-compose.yml`. The frontend is built as a static production bundle and served by an nginx container, separate from the backend container; the two communicate over HTTP using a build-time-configured API base URL, not a shared Docker network hostname reachable from the browser.
+The full stack (PostgreSQL, backend, frontend) runs via a single `docker-compose.yml`. The frontend is built as a static production bundle and served by an nginx container, separate from the backend container; the two communicate over HTTP using a build-time-configured API base URL, not a shared Docker network hostname reachable from the browser. The database port is published only to the local machine, services restart automatically unless deliberately stopped, and the backend exposes a container health check so that readiness is observable rather than assumed.
+
+The database schema is owned by versioned migrations rather than generated from the entity model at runtime, so it is reproducible across environments and reviewable in version control.
 
 ### 2.4 Database & Persistence
 - PostgreSQL and Spring Data JPA are used at the data layer; uploaded files are processed in memory only and are never persisted.
@@ -69,8 +71,10 @@ The full stack (PostgreSQL, backend, frontend) runs via a single `docker-compose
 ### 3.1 Security & Compliance
 - Personal data extracted from documents is **masked and stored encrypted with AES-256-GCM**; it is deleted after a configurable retention period.
 - Every user action is recorded in an immutable **audit log**.
+- Secrets are supplied only through environment variables and are never committed. The application refuses to start when a required secret is missing or still holds one of the placeholder values published in the tracked example file, so a forgotten substitution cannot reach a running system unnoticed.
 
 ### 3.2 Performance & Scalability
 - The application is designed to be replicated as a stateless container; note that the in-memory rate limiters (§2.1) are the one exception to this and would need a shared store (e.g. Redis) before running multiple replicas behind a load balancer.
 - End-to-end processing of a standard single-page document completes in **under 3 seconds**; the upload request itself returns immediately, with processing carried out asynchronously in the background.
-- An authentication-free **health-check** endpoint is provided.
+- An authentication-free **health-check** endpoint is provided, and is also what the container runtime polls to decide whether an instance is serving.
+- Integration tests run against a disposable database instance created per test run, so they neither depend on nor disturb any environment's data.

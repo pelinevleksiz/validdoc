@@ -16,7 +16,9 @@ graph TD
 Sensitive fields (`segment_results`, `segment_images.image_data`) are encrypted at the JPA `AttributeConverter` level with **AES-256-GCM**; the key is supplied only via an environment variable.
 
 ### 1.1 Container Readiness
-The Dockerfile is based on `eclipse-temurin:21-jre-jammy`; Tesseract 4.1.1 is installed via apt, and the `tessdata` path is fixed accordingly. Secrets (DB, JWT, encryption key) are supplied only via environment variables.
+The Dockerfile is based on `eclipse-temurin:21-jre-jammy`; Tesseract 4.1.1 is installed via apt, and the `tessdata` path is fixed accordingly. The image runs as a dedicated non-root `validdoc` user. Secrets (DB, JWT, encryption key) are supplied only via environment variables, and `SecretsValidator` aborts startup if any of them is missing or still holds a placeholder published in `.env.example` (see §7).
+
+`docker-compose.yml` publishes the PostgreSQL port to `127.0.0.1` rather than all interfaces, marks every service `restart: unless-stopped`, and gives the `app` service a health check against `/actuator/health` so orchestration can distinguish "started" from "serving".
 
 ---
 
@@ -164,6 +166,8 @@ erDiagram
 - **5.7 Page Count Enforcement:** the uploaded file's actual page count (PDF: read via PDFBox `Loader.loadPDF(...).getNumberOfPages()`; PNG/JPEG: always treated as 1) must exactly equal `template.pageCount`, checked synchronously in `DocumentController.upload()` before a `DocumentMetadata` row is even created — a mismatch returns `400 PAGE_COUNT_MISMATCH` immediately, matching the frontend's own pre-upload page-count check (`Upload.tsx`) rather than deferring to the async `PENDING_REVIEW` pathway. A PDF that fails to load at this stage (corrupt/encrypted) returns `400 PDF_UNREADABLE`.
 - **5.8 Schema Migrations:** the database schema is owned by versioned Flyway migrations under `src/main/resources/db/migration`, not derived from the entity model at runtime. Hibernate runs with `ddl-auto=validate`, so the application refuses to start if the entities and the migrated schema disagree, turning a silent drift into a startup failure. The partial unique indexes that enforce username/template-name uniqueness among active rows only (`users_username_active_unique`, `templates_name_active_unique`) live in `V1__initial_schema.sql`; they previously had to be created by an `ApplicationRunner` at boot because no migration mechanism existed.
 - **5.9 Timestamps:** all persisted timestamps are `Instant` (UTC) mapped to `timestamptz` columns, never wall-clock `LocalDateTime`. The earlier `LocalDateTime` mapping recorded whatever the host clock read, so the same document got a different stored value depending on whether the code ran in the UTC application container or on a developer machine — mixing both in one column broke ordering and displayed times off by the UTC offset. Serialized as ISO-8601 with a `Z` suffix, so the browser renders them in the viewer's own zone. The container's `TZ` (default `Europe/Istanbul`, overridable in `.env`) only affects zone-dependent calculations such as the day boundary behind the dashboard's today-uploads counter, not what is stored.
+- **5.10 Testing Strategy:** integration tests run against a disposable PostgreSQL container supplied by Testcontainers, not the development database. A single container is created in a static initializer in `AbstractIntegrationTest` and shared by every test class, which extends that base class; `@DynamicPropertySource` rewrites the datasource properties to point at it. Flyway then builds the schema inside that container exactly as it would in production, so the migrations themselves are exercised on every run. Before this, the suite wrote to the same database the running application used, leaving dozens of synthetic users, templates and documents behind and making the application's own screens hard to read. `@DynamicPropertySource` is used in preference to `@ServiceConnection` deliberately: it depends only on the Testcontainers module itself, which keeps it clear of the Spring Boot 4 / Testcontainers 2 integration churn.
+- **5.11 API Documentation:** `springdoc-openapi` derives an OpenAPI 3.1 description from the controllers at runtime and serves it with Swagger UI, so the documented surface cannot drift from the implemented one. `OpenApiConfig` registers a bearer/JWT security scheme, which is what makes the UI's Authorize button able to call the protected endpoints. Both the UI and the raw schema are switched off under the `prod` profile, so a deployed instance does not advertise its API surface.
 
 ---
 
@@ -175,7 +179,8 @@ erDiagram
 
 | Method | Endpoint | Role | Description |
 |---|---|---|---|
-| GET | `/actuator/health` | Public | Provides an authentication-free liveness check |
+| GET | `/actuator/health` | Public | Provides an authentication-free liveness check, also used by the container health check (§1.1) |
+| GET | `/swagger-ui.html`, `/v3/api-docs` | Public | Serve the generated OpenAPI description and its UI; disabled under the `prod` profile (§5.11) |
 | POST | `/api/auth/login` | Public | Issues a JWT (valid for 10 min) |
 | GET | `/api/users` | ADMIN | Lists users (paginated) |
 | POST | `/api/users` | ADMIN | Creates a new user |
@@ -203,6 +208,7 @@ erDiagram
 - Every request passes through `JwtAuthenticationFilter`; an invalid or expired token results in `401`.
 - Login attempts are rate-limited to **5 per minute per IP** (in-memory).
 - Account creation is restricted to admins; a single admin account is seeded automatically on first startup.
+- `SecretsValidator` runs at startup and rejects `JWT_SECRET`, `ENCRYPTION_SECRET_KEY` or `BOOTSTRAP_ADMIN_PASSWORD` when blank or equal to a placeholder from the tracked `.env.example`, and rejects a `JWT_SECRET` shorter than the 32 bytes HMAC-SHA256 needs. The placeholders are public in the repository, so a forgotten substitution is a real key-compromise scenario; failing at startup converts it from a silent one into a visible one.
 
 ---
 
