@@ -2,7 +2,7 @@ package com.validdoc.model;
 
 import jakarta.persistence.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "validation_settings")
@@ -23,7 +23,7 @@ public class ValidationSettings {
     private double ocrConfidenceThreshold;
 
     @Column(nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     @Column(nullable = false, length = 50)
     private String updatedBy;
@@ -42,8 +42,8 @@ public class ValidationSettings {
     public double getOcrConfidenceThreshold() { return ocrConfidenceThreshold; }
     public void setOcrConfidenceThreshold(double ocrConfidenceThreshold) { this.ocrConfidenceThreshold = ocrConfidenceThreshold; }
 
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public String getUpdatedBy() { return updatedBy; }
     public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }

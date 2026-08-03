@@ -3,7 +3,7 @@ package com.validdoc.model;
 import com.validdoc.security.MaskedDataEncryptionConverter;
 import jakarta.persistence.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "segment_images")
@@ -24,7 +24,7 @@ public class SegmentImage {
     private String imageDataBase64;
 
     @Column(nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     public SegmentImage() {}
 
@@ -40,6 +40,6 @@ public class SegmentImage {
     public String getImageDataBase64() { return imageDataBase64; }
     public void setImageDataBase64(String imageDataBase64) { this.imageDataBase64 = imageDataBase64; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

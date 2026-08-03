@@ -22,6 +22,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      TZ: ${TZ:-Europe/Istanbul}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/validdoc
       SPRING_DATASOURCE_USERNAME: postgres

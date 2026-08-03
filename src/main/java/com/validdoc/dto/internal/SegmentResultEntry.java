@@ -3,7 +3,7 @@ package com.validdoc.dto.internal;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.validdoc.model.enums.SegmentOutcome;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -18,7 +18,7 @@ public class SegmentResultEntry {
     private Double ocrConfidence;
     private boolean manuallyResolved;
     private String resolvedBy;
-    private LocalDateTime resolvedAt;
+    private Instant resolvedAt;
 
     public SegmentResultEntry() {}
 
@@ -49,6 +49,6 @@ public class SegmentResultEntry {
     public String getResolvedBy() { return resolvedBy; }
     public void setResolvedBy(String resolvedBy) { this.resolvedBy = resolvedBy; }
 
-    public LocalDateTime getResolvedAt() { return resolvedAt; }
-    public void setResolvedAt(LocalDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
+    public Instant getResolvedAt() { return resolvedAt; }
+    public void setResolvedAt(Instant resolvedAt) { this.resolvedAt = resolvedAt; }
 }

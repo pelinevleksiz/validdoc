@@ -13,7 +13,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Component
@@ -42,7 +43,7 @@ public class RetentionCleanupJob {
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
     public void purgeExpiredSegmentResults() {
-        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(LocalDateTime.now());
+        List<DocumentMetadata> expired = documentRepository.findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(Instant.now());
 
         for (DocumentMetadata document : expired) {
             document.setSegmentResults(null);
@@ -58,12 +59,12 @@ public class RetentionCleanupJob {
     @Scheduled(cron = "0 30 3 * * *")
     @Transactional
     public void expireAbandonedReviews() {
-        LocalDateTime cutoff = LocalDateTime.now().minusDays((long) validationSettingsService.getRetentionDays() * ABANDONED_REVIEW_MULTIPLIER);
+        Instant cutoff = Instant.now().minus((long) validationSettingsService.getRetentionDays() * ABANDONED_REVIEW_MULTIPLIER, ChronoUnit.DAYS);
         List<DocumentMetadata> abandoned = documentRepository.findByStatusAndProcessedAtLessThan(DocumentStatus.PENDING_REVIEW, cutoff);
 
         for (DocumentMetadata document : abandoned) {
             document.setStatus(DocumentStatus.REJECTED_INVALID);
-            document.setPurgeAt(LocalDateTime.now().plusDays(validationSettingsService.getRetentionDays()));
+            document.setPurgeAt(Instant.now().plus(validationSettingsService.getRetentionDays(), ChronoUnit.DAYS));
             documentRepository.save(document);
             segmentImageRepository.deleteByDocumentId(document.getId());
             auditLogRepository.save(new AuditLog(document.getId(), ABANDONED_REVIEW_ACTION, "SYSTEM"));

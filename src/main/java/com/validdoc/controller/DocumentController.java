@@ -35,8 +35,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -188,8 +190,9 @@ public class DocumentController {
 
         User scopeUser = currentUser.getRole() == UserRole.ADMIN ? null : currentUser;
 
-        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+        ZoneId zone = ZoneId.systemDefault();
+        Instant startOfToday = LocalDate.now(zone).atStartOfDay(zone).toInstant();
+        Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
 
         long todayUploads = documentRepository.countUploadsSince(startOfToday, scopeUser);
         long pendingReview = documentRepository.countByStatus(DocumentStatus.PENDING_REVIEW);

@@ -37,7 +37,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -179,7 +180,7 @@ public class DocumentService {
         target.setOutcome(finalOutcome);
         target.setManuallyResolved(true);
         target.setResolvedBy(resolvedBy);
-        target.setResolvedAt(LocalDateTime.now());
+        target.setResolvedAt(Instant.now());
 
         segmentImageRepository.deleteByDocumentIdAndSegmentId(documentId, segmentId);
 
@@ -188,8 +189,8 @@ public class DocumentService {
             DocumentStatus recomputed = validationService.deriveStatus(entries);
             document.setStatus(recomputed);
             document.setOperator(userRepository.findByUsername(resolvedBy).orElse(null));
-            document.setProcessedAt(LocalDateTime.now());
-            document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
+            document.setProcessedAt(Instant.now());
+            document.setPurgeAt(document.getProcessedAt().plus(validationSettingsService.getRetentionDays(), ChronoUnit.DAYS));
         }
 
         document.setSegmentResults(serializeEntries(entries));
@@ -238,10 +239,10 @@ public class DocumentService {
     private void applyValidationResult(DocumentMetadata document, ValidationResult result) {
         document.setSegmentResults(result.getSegmentResultsJson());
         document.setStatus(result.getStatus());
-        document.setProcessedAt(LocalDateTime.now());
+        document.setProcessedAt(Instant.now());
 
         if (isTerminalStatus(result.getStatus())) {
-            document.setPurgeAt(document.getProcessedAt().plusDays(validationSettingsService.getRetentionDays()));
+            document.setPurgeAt(document.getProcessedAt().plus(validationSettingsService.getRetentionDays(), ChronoUnit.DAYS));
         }
     }
 
@@ -266,14 +267,14 @@ public class DocumentService {
             image.setDocumentId(documentId);
             image.setSegmentId(entry.getSegmentId());
             image.setImageDataBase64(Base64.getEncoder().encodeToString(imageBytes));
-            image.setCreatedAt(LocalDateTime.now());
+            image.setCreatedAt(Instant.now());
             segmentImageRepository.save(image);
         }
     }
 
     private void applyEngineFailure(DocumentMetadata document, String reason) {
         document.setStatus(DocumentStatus.PENDING_REVIEW);
-        document.setProcessedAt(LocalDateTime.now());
+        document.setProcessedAt(Instant.now());
         document.setFailureReason(reason);
     }
 

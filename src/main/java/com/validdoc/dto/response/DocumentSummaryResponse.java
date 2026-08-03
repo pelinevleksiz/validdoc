@@ -3,7 +3,7 @@ package com.validdoc.dto.response;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public class DocumentSummaryResponse {
 
@@ -15,8 +15,8 @@ public class DocumentSummaryResponse {
     private String segmentResults;
     private String uploadedByUsername;
     private String operatorUsername;
-    private LocalDateTime uploadedAt;
-    private LocalDateTime processedAt;
+    private Instant uploadedAt;
+    private Instant processedAt;
     private String failureReason;
 
     public DocumentSummaryResponse() {}
@@ -24,7 +24,7 @@ public class DocumentSummaryResponse {
     public DocumentSummaryResponse(Long id, String fileName, DocumentStatus status, Long templateId,
                                    DocumentLanguage language, String segmentResults,
                                    String uploadedByUsername, String operatorUsername,
-                                   LocalDateTime uploadedAt, LocalDateTime processedAt, String failureReason) {
+                                   Instant uploadedAt, Instant processedAt, String failureReason) {
         this.id = id;
         this.fileName = fileName;
         this.status = status;
@@ -62,11 +62,11 @@ public class DocumentSummaryResponse {
     public String getOperatorUsername() { return operatorUsername; }
     public void setOperatorUsername(String operatorUsername) { this.operatorUsername = operatorUsername; }
 
-    public LocalDateTime getUploadedAt() { return uploadedAt; }
-    public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+    public Instant getUploadedAt() { return uploadedAt; }
+    public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }
 
-    public LocalDateTime getProcessedAt() { return processedAt; }
-    public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
+    public Instant getProcessedAt() { return processedAt; }
+    public void setProcessedAt(Instant processedAt) { this.processedAt = processedAt; }
 
     public String getFailureReason() { return failureReason; }
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }

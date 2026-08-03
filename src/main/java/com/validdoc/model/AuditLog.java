@@ -2,7 +2,7 @@ package com.validdoc.model;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.Immutable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Immutable
@@ -23,7 +23,7 @@ public class AuditLog {
     private String performedBy;
 
     @Column(nullable = false)
-    private LocalDateTime timestamp = LocalDateTime.now();
+    private Instant timestamp = Instant.now();
 
     public AuditLog() {}
 
@@ -35,7 +35,7 @@ public class AuditLog {
         this.documentId = documentId;
         this.action = action;
         this.performedBy = performedBy;
-        this.timestamp = LocalDateTime.now();
+        this.timestamp = Instant.now();
     }
 
     public Long getId() { return id; }
@@ -50,6 +50,6 @@ public class AuditLog {
     public String getPerformedBy() { return performedBy; }
     public void setPerformedBy(String performedBy) { this.performedBy = performedBy; }
 
-    public LocalDateTime getTimestamp() { return timestamp; }
-    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
+    public Instant getTimestamp() { return timestamp; }
+    public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
 }

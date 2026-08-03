@@ -39,7 +39,8 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -684,7 +685,7 @@ class ApiIntegrationTest {
         image.setDocumentId(resolveTestDocumentId);
         image.setSegmentId(resolveSegmentBId);
         image.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
-        image.setCreatedAt(LocalDateTime.now());
+        image.setCreatedAt(Instant.now());
         segmentImageRepository.save(image);
 
         mockMvc.perform(get("/api/documents/" + resolveTestDocumentId)
@@ -821,7 +822,7 @@ class ApiIntegrationTest {
         abandoned.setUploadedBy(uploader);
         abandoned.setTemplate(template);
         abandoned.setStatus(DocumentStatus.PENDING_REVIEW);
-        abandoned.setProcessedAt(LocalDateTime.now().minusYears(5));
+        abandoned.setProcessedAt(Instant.now().minus(5 * 365, ChronoUnit.DAYS));
         abandoned = documentRepository.save(abandoned);
         Long abandonedDocumentId = abandoned.getId();
 
@@ -976,8 +977,8 @@ class ApiIntegrationTest {
         expired.setTemplate(template);
         expired.setStatus(DocumentStatus.VALIDATED);
         expired.setSegmentResults("[{\"segmentId\":1,\"label\":\"Test\",\"outcome\":\"FILLED_VALID\"}]");
-        expired.setProcessedAt(LocalDateTime.now().minusDays(200));
-        expired.setPurgeAt(LocalDateTime.now().minusDays(1));
+        expired.setProcessedAt(Instant.now().minus(200, ChronoUnit.DAYS));
+        expired.setPurgeAt(Instant.now().minus(1, ChronoUnit.DAYS));
         expired = documentRepository.save(expired);
         Long expiredDocumentId = expired.getId();
 

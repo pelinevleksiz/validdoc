@@ -1,6 +1,6 @@
 package com.validdoc.dto.response;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public class AuditLogResponse {
 
@@ -8,9 +8,9 @@ public class AuditLogResponse {
     private final Long documentId;
     private final String action;
     private final String performedBy;
-    private final LocalDateTime timestamp;
+    private final Instant timestamp;
 
-    public AuditLogResponse(Long id, Long documentId, String action, String performedBy, LocalDateTime timestamp) {
+    public AuditLogResponse(Long id, Long documentId, String action, String performedBy, Instant timestamp) {
         this.id = id;
         this.documentId = documentId;
         this.action = action;
@@ -22,5 +22,5 @@ public class AuditLogResponse {
     public Long getDocumentId() { return documentId; }
     public String getAction() { return action; }
     public String getPerformedBy() { return performedBy; }
-    public LocalDateTime getTimestamp() { return timestamp; }
+    public Instant getTimestamp() { return timestamp; }
 }

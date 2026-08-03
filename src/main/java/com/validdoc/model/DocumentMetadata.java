@@ -4,7 +4,7 @@ import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.security.MaskedDataEncryptionConverter;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "document_metadata")
@@ -38,11 +38,11 @@ public class DocumentMetadata {
     private User uploadedBy;
 
     @Column(nullable = false)
-    private LocalDateTime uploadedAt = LocalDateTime.now();
+    private Instant uploadedAt = Instant.now();
 
-    private LocalDateTime processedAt;
+    private Instant processedAt;
 
-    private LocalDateTime purgeAt;
+    private Instant purgeAt;
 
     @ManyToOne
     @JoinColumn(name = "operator_id")
@@ -74,14 +74,14 @@ public class DocumentMetadata {
     public User getUploadedBy() { return uploadedBy; }
     public void setUploadedBy(User uploadedBy) { this.uploadedBy = uploadedBy; }
 
-    public LocalDateTime getUploadedAt() { return uploadedAt; }
-    public void setUploadedAt(LocalDateTime uploadedAt) { this.uploadedAt = uploadedAt; }
+    public Instant getUploadedAt() { return uploadedAt; }
+    public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }
 
-    public LocalDateTime getProcessedAt() { return processedAt; }
-    public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
+    public Instant getProcessedAt() { return processedAt; }
+    public void setProcessedAt(Instant processedAt) { this.processedAt = processedAt; }
 
-    public LocalDateTime getPurgeAt() { return purgeAt; }
-    public void setPurgeAt(LocalDateTime purgeAt) { this.purgeAt = purgeAt; }
+    public Instant getPurgeAt() { return purgeAt; }
+    public void setPurgeAt(Instant purgeAt) { this.purgeAt = purgeAt; }
 
     public User getOperator() { return operator; }
     public void setOperator(User operator) { this.operator = operator; }

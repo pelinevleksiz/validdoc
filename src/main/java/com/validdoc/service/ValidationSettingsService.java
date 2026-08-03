@@ -6,7 +6,7 @@ import com.validdoc.repository.ValidationSettingsRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 public class ValidationSettingsService {
@@ -32,7 +32,7 @@ public class ValidationSettingsService {
         seeded.setRetentionDays(defaults.getRetentionDays());
         seeded.setInkDensityThreshold(defaults.getInkDensityThreshold());
         seeded.setOcrConfidenceThreshold(defaults.getOcrConfidenceThreshold());
-        seeded.setUpdatedAt(LocalDateTime.now());
+        seeded.setUpdatedAt(Instant.now());
         seeded.setUpdatedBy("SYSTEM_SEED");
         return repository.save(seeded);
     }
@@ -52,7 +52,7 @@ public class ValidationSettingsService {
         updated.setRetentionDays(retentionDays);
         updated.setInkDensityThreshold(inkDensityThreshold);
         updated.setOcrConfidenceThreshold(ocrConfidenceThreshold);
-        updated.setUpdatedAt(LocalDateTime.now());
+        updated.setUpdatedAt(Instant.now());
         updated.setUpdatedBy(updatedBy);
 
         current = repository.save(updated);
