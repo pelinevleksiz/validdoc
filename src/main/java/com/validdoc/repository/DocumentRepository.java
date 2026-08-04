@@ -15,10 +15,6 @@ import java.util.List;
 @Repository
 public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long> {
 
-    Page<DocumentMetadata> findByStatus(DocumentStatus status, Pageable pageable);
-
-    long countByStatus(DocumentStatus status);
-
     List<DocumentMetadata> findByPurgeAtLessThanEqualAndSegmentResultsIsNotNull(Instant dateTime);
 
     List<DocumentMetadata> findByStatusAndProcessedAtLessThan(DocumentStatus status, Instant cutoff);
@@ -27,9 +23,13 @@ public interface DocumentRepository extends JpaRepository<DocumentMetadata, Long
 
     Page<DocumentMetadata> findByUploadedByOrderByUploadedAtDesc(User uploadedBy, Pageable pageable);
 
-    boolean existsByUploadedBy(User uploadedBy);
+    @Query("select d from DocumentMetadata d where d.status = :status and (:uploadedBy is null or d.uploadedBy = :uploadedBy)")
+    Page<DocumentMetadata> findByStatusScoped(@Param("status") DocumentStatus status,
+                                              @Param("uploadedBy") User uploadedBy,
+                                              Pageable pageable);
 
-    boolean existsByOperator(User operator);
+    @Query("select count(d) from DocumentMetadata d where d.status = :status and (:uploadedBy is null or d.uploadedBy = :uploadedBy)")
+    long countByStatusScoped(@Param("status") DocumentStatus status, @Param("uploadedBy") User uploadedBy);
 
     @Query("select count(d) from DocumentMetadata d where d.uploadedAt >= :from and (:uploadedBy is null or d.uploadedBy = :uploadedBy)")
     long countUploadsSince(@Param("from") Instant from, @Param("uploadedBy") User uploadedBy);

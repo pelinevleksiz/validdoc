@@ -48,6 +48,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1150,5 +1151,149 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PAGE_COUNT_MISMATCH"));
+    }
+
+    @Test
+    @Order(53)
+    void operatorAccessAndReviewQueueAreScopedToOwnUploads() throws Exception {
+        String ownerUsername = "operator_owner_" + RUN_ID;
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + ownerUsername + "\",\"password\":\"OwnerPass1!\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult ownerLoginResult = mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + ownerUsername + "\",\"password\":\"OwnerPass1!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String ownerToken = extractToken(ownerLoginResult);
+
+        String requestBody = """
+                {
+                  "name": "IDOR Test Template %s",
+                  "segments": [
+                    { "label": "Imza", "page": 1, "x": 100, "y": 100, "w": 200, "h": 80,
+                      "rules": [ { "type": "SIGNATURE_INK" } ] }
+                  ]
+                }
+                """.formatted(RUN_ID);
+
+        MvcResult templateResult = mockMvc.perform(post("/api/templates")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long idorTemplateId = extractLongField(templateResult, "id");
+
+        MvcResult detailResult = mockMvc.perform(get("/api/templates/" + idorTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        Matcher idMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailResult.getResponse().getContentAsString());
+        assertTrue(idMatcher.find(), "Template id bulunamadi");
+        assertTrue(idMatcher.find(), "Segment id bulunamadi");
+        Long idorSegmentId = Long.valueOf(idMatcher.group(1));
+
+        MockMultipartFile file = new MockMultipartFile("file", "idor-seed.png", "image/png", generateInkImage(false));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(file)
+                        .param("templateId", String.valueOf(idorTemplateId))
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        Long idorDocumentId = extractLongField(uploadResult, "id");
+        pollForFinalStatus(idorDocumentId, ownerToken);
+
+        SegmentResultEntry entry = new SegmentResultEntry();
+        entry.setSegmentId(idorSegmentId);
+        entry.setLabel("Imza");
+        entry.setOutcome(SegmentOutcome.PENDING_REVIEW);
+
+        DocumentMetadata document = documentRepository.findById(idorDocumentId).orElseThrow();
+        document.setStatus(DocumentStatus.PENDING_REVIEW);
+        document.setSegmentResults(jsonMapper.writeValueAsString(List.of(entry)));
+        documentRepository.save(document);
+
+        SegmentImage image = new SegmentImage();
+        image.setDocumentId(idorDocumentId);
+        image.setSegmentId(idorSegmentId);
+        image.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
+        image.setCreatedAt(Instant.now());
+        segmentImageRepository.save(image);
+
+        String outsiderUsername = "operator_outsider_" + RUN_ID;
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + outsiderUsername + "\",\"password\":\"OutsiderPass1!\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult outsiderLoginResult = mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + outsiderUsername + "\",\"password\":\"OutsiderPass1!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String outsiderToken = extractToken(outsiderLoginResult);
+
+        mockMvc.perform(get("/api/documents/" + idorDocumentId)
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+
+        mockMvc.perform(get("/api/documents/" + idorDocumentId + "/segments/" + idorSegmentId + "/image")
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/documents/" + idorDocumentId + "/segments/" + idorSegmentId + "/resolve")
+                        .header("Authorization", "Bearer " + outsiderToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+
+        mockMvc.perform(get("/api/documents/queue?page=0&size=50")
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/documents/stats")
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingReview").value(0));
+
+        mockMvc.perform(get("/api/documents/" + idorDocumentId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
+
+        mockMvc.perform(get("/api/documents/" + idorDocumentId + "/segments/" + idorSegmentId + "/image")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/documents/queue?page=0&size=50")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(greaterThanOrEqualTo(1)));
+
+        mockMvc.perform(get("/api/documents/" + idorDocumentId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/documents/queue?page=0&size=50")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(greaterThanOrEqualTo(1)));
     }
 }
