@@ -20,3 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Template preview no longer crashes with a 500 when a segment is missing required coordinates; it now returns 400 with a clear message.
 
 ### Removed
+
+- Unused error codes (`USER_HAS_LINKED_DOCUMENTS`, `INVALID_DOCUMENT_STATUS`) and their message keys.
+- Unused repository methods (`TemplateRepository.findByName`, `UserRepository.countByRole`, `SegmentImageRepository.findByDocumentId(Long)`, unpaged `AuditLogRepository.findById`/`findAll`/`findByDocumentId(Long)`).
+- Unused `OcrService.tesseractFactory` field and always-false `.disabled()` check in `CustomUserDetailsService`.
+- Empty Maven Initializr placeholder tags in `pom.xml`.
+- Stale `email` field from test payloads (`CreateUserRequest` has no such field).
