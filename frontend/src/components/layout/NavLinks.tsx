@@ -1,16 +1,11 @@
 import { NavLink } from "react-router"
 import { useTranslation } from "react-i18next"
-import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
-import { NAV_ITEMS } from "@/components/layout/nav-items"
+import { useVisibleNavItems } from "@/components/layout/nav-items"
 
 function NavLinks() {
   const { t } = useTranslation()
-  const { role } = useAuth()
-
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || (role && item.roles.includes(role))
-  )
+  const visibleItems = useVisibleNavItems()
 
   return (
     <nav className="flex flex-col gap-1">

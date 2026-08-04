@@ -16,11 +16,9 @@
     "next": "Sonraki",
     "page": "Sayfa {{current}} / {{total}}",
     "cancel": "Vazgeç",
-    "close": "Kapat",
     "save": "Kaydet",
     "saving": "Kaydediliyor...",
     "logout": "Çıkış yap",
-    "menu": "Menu",
     "notFoundTitle": "Sayfa bulunamadı",
     "notFoundDescription": "Aradığınız sayfa mevcut değil ya da taşınmış olabilir.",
     "notFoundBackLink": "Panele dön"
@@ -46,16 +44,11 @@
     "DUPLICATE_RECORD": "Bu isimde bir kayıt zaten var."
   },
   "dashboard": {
-    "statsTitle": "Özet",
     "statsToday": "Bugün yüklenen",
     "statsPending": "İncelemede bekleyen",
     "statsWeeklyRate": "Haftalık geçerlilik oranı",
     "statsNoData": "Henüz veri yok",
-    "statsLoadError": "İstatistikler yüklenemedi.",
-    "shortcutUploadDesc": "Yeni bir belge tara ve doğrula",
-    "shortcutTemplateDesc": "Yeni bir tarama şablonu tanımla",
-    "shortcutUserDesc": "Sisteme yeni bir kullanıcı ekle",
-    "shortcutReviewDesc": "Bekleyen incelemeleri tamamla"
+    "statsLoadError": "İstatistikler yüklenemedi."
   },
   "templates": {
     "title": "Şablonlar",
@@ -106,7 +99,6 @@
     "inkDensity": "Mürekkep yoğunluğu eşiği (0-1)",
     "ocrConfidence": "OCR güven eşiği (0-100)",
     "success": "Ayarlar güncellendi.",
-    "loadError": "Ayarlar kaydedilemedi.",
     "retentionInvalid": "Pozitif bir tam sayı olmalı",
     "inkDensityInvalid": "0 ile 1 arasında olmalı",
     "ocrConfidenceInvalid": "0 ile 100 arasında olmalı",
@@ -176,7 +168,6 @@
     "pdfReadError": "Şu dosya(lar) okunamadı, listeye eklenmedi: {{fileNames}}",
     "language": "Dil:",
     "loadingTemplates": "Şablonlar yükleniyor...",
-    "noTemplates": "Henüz kullanılabilir bir şablon yok.",
     "back": "Geri",
     "uploadButton": "{{count}} dosyayı yükle",
     "uploading": "Yükleniyor...",

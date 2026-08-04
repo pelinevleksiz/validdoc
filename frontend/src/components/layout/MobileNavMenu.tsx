@@ -1,7 +1,6 @@
 import { NavLink } from "react-router"
 import { Menu } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -9,15 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { NAV_ITEMS } from "@/components/layout/nav-items"
+import { useVisibleNavItems } from "@/components/layout/nav-items"
 
 function MobileNavMenu() {
   const { t } = useTranslation()
-  const { role } = useAuth()
-
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || (role && item.roles.includes(role))
-  )
+  const visibleItems = useVisibleNavItems()
 
   return (
     <DropdownMenu>

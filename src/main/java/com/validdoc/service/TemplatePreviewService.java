@@ -4,13 +4,10 @@ import com.validdoc.dto.request.TemplatePreviewSegmentRequest;
 import com.validdoc.dto.response.TemplatePreviewSegmentResponse;
 import com.validdoc.exception.ApiException;
 import com.validdoc.exception.ErrorCode;
+import com.validdoc.exception.OpenCVException;
 import com.validdoc.exception.PageOutOfBoundsException;
 import com.validdoc.exception.PdfRasterizationException;
 import net.sourceforge.tess4j.Tesseract;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-import org.opencv.imgproc.Imgproc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,7 +16,6 @@ import com.validdoc.config.TesseractFactory;
 import com.validdoc.model.enums.DocumentLanguage;
 
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,7 +28,6 @@ import java.util.stream.Collectors;
 public class TemplatePreviewService {
 
     private static final Logger log = LoggerFactory.getLogger(TemplatePreviewService.class);
-    private static final String PDF_CONTENT_TYPE = "application/pdf";
     private static final int SINGLE_IMAGE_PAGE_NUMBER = 1;
 
     private final PdfRasterService pdfRasterService;
@@ -56,7 +51,7 @@ public class TemplatePreviewService {
 
         Map<Integer, BufferedImage> pages;
         try {
-            pages = PDF_CONTENT_TYPE.equals(contentType)
+            pages = FileSignatureValidator.PDF_CONTENT_TYPE.equals(contentType)
                     ? pdfRasterService.renderPages(new ByteArrayInputStream(fileBytes), requiredPages)
                     : renderSingleImagePage(fileBytes, requiredPages);
         } catch (PdfRasterizationException | PageOutOfBoundsException | IOException e) {
@@ -70,11 +65,11 @@ public class TemplatePreviewService {
         for (TemplatePreviewSegmentRequest segment : segments) {
             BufferedImage page = pages.get(segment.getPage());
             validateBounds(segment, page);
-            BufferedImage region = safeCrop(page, (int) (double) segment.getX(), (int) (double) segment.getY(),
+            BufferedImage region = ImageProcessingUtil.safeCrop(page, (int) (double) segment.getX(), (int) (double) segment.getY(),
                     (int) (double) segment.getW(), (int) (double) segment.getH());
 
             String text = tryOcr(tesseract, region, segment.getLabel());
-            double density = computeInkDensity(region);
+            double density = computeInkDensityLenient(region, segment.getLabel());
             results.add(new TemplatePreviewSegmentResponse(segment.getLabel(), segment.getPage(), text, density));
         }
         return results;
@@ -86,6 +81,15 @@ public class TemplatePreviewService {
         } catch (Throwable t) {
             log.warn("Onizlemede OCR basarisiz oldu, segment={}, ink yogunlugu yine de donuluyor", segmentLabel, t);
             return null;
+        }
+    }
+
+    private double computeInkDensityLenient(BufferedImage region, String segmentLabel) {
+        try {
+            return ImageProcessingUtil.computeInkDensity(region);
+        } catch (OpenCVException e) {
+            log.warn("Onizlemede piksel yogunlugu hesaplanamadi, segment={}, 0.0 donuluyor", segmentLabel, e);
+            return 0.0;
         }
     }
 
@@ -108,44 +112,5 @@ public class TemplatePreviewService {
         if (w <= 0 || h <= 0 || x < 0 || y < 0 || x >= image.getWidth() || y >= image.getHeight()) {
             throw new ApiException(ErrorCode.INVALID_SEGMENT_COORDINATES, segment.getLabel());
         }
-    }
-
-    private BufferedImage safeCrop(BufferedImage image, int x, int y, int w, int h) {
-        int clampedX = Math.max(0, Math.min(x, image.getWidth() - 1));
-        int clampedY = Math.max(0, Math.min(y, image.getHeight() - 1));
-        int clampedW = Math.max(1, Math.min(w, image.getWidth() - clampedX));
-        int clampedH = Math.max(1, Math.min(h, image.getHeight() - clampedY));
-        return image.getSubimage(clampedX, clampedY, clampedW, clampedH);
-    }
-
-    private double computeInkDensity(BufferedImage region) {
-        Mat mat = bufferedImageToMat(region);
-        Mat gray = new Mat();
-        Mat binary = new Mat();
-        try {
-            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_BGR2GRAY);
-            Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU);
-
-            long total = (long) binary.rows() * binary.cols();
-            if (total == 0) {
-                return 0.0;
-            }
-            int inkPixels = Core.countNonZero(binary);
-            return (double) inkPixels / total;
-        } finally {
-            mat.release();
-            gray.release();
-            binary.release();
-        }
-    }
-
-    private Mat bufferedImageToMat(BufferedImage bi) {
-        BufferedImage normalized = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
-        normalized.getGraphics().drawImage(bi, 0, 0, null);
-
-        byte[] data = ((DataBufferByte) normalized.getRaster().getDataBuffer()).getData();
-        Mat mat = new Mat(normalized.getHeight(), normalized.getWidth(), CvType.CV_8UC3);
-        mat.put(0, 0, data);
-        return mat;
     }
 }
