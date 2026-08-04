@@ -31,6 +31,10 @@ public enum ErrorCode {
     PAGE_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "error.document.page_count_mismatch"),
     PREVIEW_FAILED(HttpStatus.BAD_REQUEST, "error.template.preview_failed"),
     MALFORMED_REQUEST_BODY(HttpStatus.BAD_REQUEST, "error.request.malformed_body"),
+    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.request.resource_not_found"),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "error.request.method_not_allowed"),
+    MISSING_REQUEST_PARAMETER(HttpStatus.BAD_REQUEST, "error.request.missing_parameter"),
+    INVALID_PARAMETER_TYPE(HttpStatus.BAD_REQUEST, "error.request.invalid_parameter_type"),
     INTERNAL_UNEXPECTED(HttpStatus.INTERNAL_SERVER_ERROR, "error.internal.unexpected");
 
     private final HttpStatus status;
