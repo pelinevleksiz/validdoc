@@ -92,7 +92,7 @@ public class UserController {
 
         user.setActive(false);
         userRepository.save(user);
-        auditLogRepository.save(new AuditLog("USER_DEACTIVATED", authentication.getName()));
+        auditLogRepository.save(new AuditLog("USER_DEACTIVATED", authentication.getName(), user.getId()));
 
         return ResponseEntity.noContent().build();
     }

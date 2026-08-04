@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Branching model (`main` / `develop` / `test` / `feature/*` / `release/*`), pull request template and this changelog.
+- Audit logs now record the target user for actions like deactivation.
 
 ### Changed
 
