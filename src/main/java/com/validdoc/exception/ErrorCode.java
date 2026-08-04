@@ -12,6 +12,8 @@ public enum ErrorCode {
     BAD_CREDENTIALS(HttpStatus.UNAUTHORIZED, "error.auth.bad_credentials"),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "error.access.denied"),
     DUPLICATE_RECORD(HttpStatus.CONFLICT, "error.record.duplicate"),
+    TEMPLATE_NAME_TAKEN(HttpStatus.CONFLICT, "error.template.name_taken"),
+    USERNAME_TAKEN(HttpStatus.CONFLICT, "error.user.username_taken"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "error.user.not_found"),
     CANNOT_DELETE_LAST_ADMIN(HttpStatus.CONFLICT, "error.user.cannot_delete_last_admin"),
     TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "error.template.not_found"),
