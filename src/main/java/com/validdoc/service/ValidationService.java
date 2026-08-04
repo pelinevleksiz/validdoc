@@ -30,8 +30,8 @@ public class ValidationService {
 
     private static final Pattern TC_KIMLIK_NO_PATTERN = Pattern.compile("^\\d{11}$");
     private static final Pattern VKN_PATTERN = Pattern.compile("^\\d{10}$");
-    private static final Pattern PHONE_TR_PATTERN =
-            Pattern.compile("^(\\+90|0)?\\s?5\\d{2}\\s?\\d{3}\\s?\\d{2}\\s?\\d{2}$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?\\d{7,15}$");
+    private static final Pattern PHONE_SEPARATOR_PATTERN = Pattern.compile("[\\s()\\-./]");
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[\\w.+-]+@[\\w-]+\\.[a-zA-Z]{2,}$");
     private static final Pattern LETTERS_ONLY_PATTERN = Pattern.compile("^[\\p{L} ]+$");
@@ -152,10 +152,15 @@ public class ValidationService {
             case MAX_LENGTH -> rule.getParam() != null && text.length() <= rule.getParam();
             case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches();
             case VKN -> VKN_PATTERN.matcher(text).matches();
-            case PHONE_TR -> PHONE_TR_PATTERN.matcher(text).matches();
+            case PHONE -> isValidPhone(text);
             case EMAIL -> EMAIL_PATTERN.matcher(text).matches();
             case SIGNATURE_INK, STAMP_INK -> true;
         };
+    }
+
+    private boolean isValidPhone(String text) {
+        String stripped = PHONE_SEPARATOR_PATTERN.matcher(text).replaceAll("");
+        return PHONE_PATTERN.matcher(stripped).matches();
     }
 
     private boolean isValidDate(String text) {
