@@ -1,3 +1,5 @@
+import { useAuth } from "@/contexts/AuthContext"
+
 export interface NavItem {
   labelKey: string
   path: string
@@ -15,3 +17,8 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "nav.settings", path: "/settings", roles: ["ADMIN"] },
   { labelKey: "nav.changePassword", path: "/change-password", roles: ["ADMIN"] },
 ]
+
+export function useVisibleNavItems(): NavItem[] {
+  const { role } = useAuth()
+  return NAV_ITEMS.filter((item) => !item.roles || (role && item.roles.includes(role)))
+}

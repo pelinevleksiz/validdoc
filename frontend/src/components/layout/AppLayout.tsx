@@ -4,8 +4,6 @@ import MobileNavMenu from "@/components/layout/MobileNavMenu"
 import LanguageSwitcher from "@/components/layout/LanguageSwitcher"
 import SessionExpiryIndicator from "@/components/layout/SessionExpiryIndicator"
 import UserMenu from "@/components/layout/UserMenu"
-import MobileLanguageToggle from "@/components/layout/MobileLanguageToggle"
-import MobileSessionToggle from "@/components/layout/MobileSessionToggle"
 
 function AppLayout() {
   return (
@@ -17,10 +15,10 @@ function AppLayout() {
           <MobileNavMenu />
           <span className="font-amarego lowercase text-xl">validdoc</span>
         </div>
-        
+
         <div className="flex items-center gap-1.5">
-          <MobileLanguageToggle />
-          <MobileSessionToggle />
+          <LanguageSwitcher variant="mobile" />
+          <SessionExpiryIndicator variant="mobile" />
           <UserMenu showSessionInDropdown />
         </div>
       </div>

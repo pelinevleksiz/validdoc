@@ -10,7 +10,11 @@ function formatRemaining(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`
 }
 
-function SessionExpiryIndicator() {
+interface SessionExpiryIndicatorProps {
+  variant?: "desktop" | "mobile"
+}
+
+function SessionExpiryIndicator({ variant = "desktop" }: SessionExpiryIndicatorProps) {
   const { expiresAt } = useAuth()
   const [now, setNow] = useState(Date.now())
   const [expanded, setExpanded] = useState(false)
@@ -24,13 +28,16 @@ function SessionExpiryIndicator() {
     return null
   }
 
+  const isMobile = variant === "mobile"
+
   return (
     <button
       type="button"
       onClick={() => setExpanded((prev) => !prev)}
       className={cn(
-        "flex h-8 items-center gap-1.5 overflow-hidden rounded-md border border-muted-foreground/20 px-2 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
-        expanded ? "w-20" : "w-8"
+        "flex items-center gap-1.5 overflow-hidden rounded-md border border-muted-foreground/20 px-2 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground",
+        isMobile ? "h-9 flex-row-reverse" : "h-8",
+        expanded ? "w-20" : isMobile ? "w-9" : "w-8"
       )}
     >
       <Clock className="h-4 w-4 shrink-0" />

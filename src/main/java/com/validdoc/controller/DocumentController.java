@@ -49,8 +49,6 @@ import com.validdoc.dto.request.SegmentResolveRequest;
 @RequestMapping("/api/documents")
 public class DocumentController {
 
-    private static final String PDF_CONTENT_TYPE = "application/pdf";
-
     private final DocumentRepository documentRepository;
     private final TemplateRepository templateRepository;
     private final UserRepository userRepository;
@@ -235,7 +233,7 @@ public class DocumentController {
     }
 
     private int detectPageCount(byte[] fileBytes, String contentType) {
-        if (!PDF_CONTENT_TYPE.equals(contentType)) {
+        if (!FileSignatureValidator.PDF_CONTENT_TYPE.equals(contentType)) {
             return 1;
         }
         try (PDDocument document = Loader.loadPDF(fileBytes)) {

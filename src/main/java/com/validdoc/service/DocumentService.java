@@ -15,7 +15,6 @@ import com.validdoc.model.DocumentMetadata;
 import com.validdoc.model.SegmentImage;
 import com.validdoc.model.Template;
 import com.validdoc.model.TemplateSegment;
-import com.validdoc.model.User;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.SegmentOutcome;
@@ -51,7 +50,6 @@ import java.util.stream.Collectors;
 public class DocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
-    private static final String PDF_CONTENT_TYPE = "application/pdf";
     private static final int SINGLE_IMAGE_PAGE_NUMBER = 1;
     private static final String ENGINE_ERROR_AUDIT_ACTION = "ENGINE_ERROR_PENDING_REVIEW";
 
@@ -108,7 +106,7 @@ public class DocumentService {
                     .map(TemplateSegment::getPage)
                     .collect(Collectors.toSet());
 
-            Map<Integer, BufferedImage> pages = PDF_CONTENT_TYPE.equals(contentType)
+            Map<Integer, BufferedImage> pages = FileSignatureValidator.PDF_CONTENT_TYPE.equals(contentType)
                     ? pdfRasterService.renderPages(new ByteArrayInputStream(fileBytes), requiredPages)
                     : renderSingleImagePage(fileBytes, requiredPages);
 

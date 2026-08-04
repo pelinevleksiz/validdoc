@@ -1,16 +1,31 @@
-import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { getLanguage, setLanguage, type Language } from "@/lib/language"
-import i18n from "@/lib/i18n"
+import { setLanguage, type Language } from "@/lib/language"
 
-function LanguageSwitcher() {
-  const [language, setLanguageState] = useState<Language>(getLanguage())
+interface LanguageSwitcherProps {
+  variant?: "desktop" | "mobile"
+}
+
+function LanguageSwitcher({ variant = "desktop" }: LanguageSwitcherProps) {
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
 
   function handleChange(next: Language) {
     setLanguage(next)
-    setLanguageState(next)
     i18n.changeLanguage(next)
+  }
+
+  if (variant === "mobile") {
+    return (
+      <button
+        type="button"
+        onClick={() => handleChange(language === "tr" ? "en" : "tr")}
+        className="flex h-9 w-9 items-center justify-center rounded-md border bg-background text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      >
+        {language.toUpperCase()}
+      </button>
+    )
   }
 
   return (
