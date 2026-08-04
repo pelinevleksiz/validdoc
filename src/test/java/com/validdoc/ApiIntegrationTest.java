@@ -217,7 +217,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/users")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\",\"email\":\"" + OPERATOR_USERNAME + "@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                        .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.role").value("OPERATOR"));
     }
@@ -228,7 +228,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/users")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\",\"email\":\"dup@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                        .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DUPLICATE_RECORD"));
     }
@@ -246,7 +246,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/users")
                         .header("Authorization", "Bearer " + operatorToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"x_" + RUN_ID + "\",\"password\":\"whatever1!\",\"email\":\"x@x.com\",\"role\":\"OPERATOR\"}"))
+                        .content("{\"username\":\"x_" + RUN_ID + "\",\"password\":\"whatever1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -861,8 +861,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         MvcResult createResult = mockMvc.perform(post("/api/users")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + throwawayUsername + "\",\"password\":\"ThrowawayPass1!\",\"email\":\""
-                                + throwawayUsername + "@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                        .content("{\"username\":\"" + throwawayUsername + "\",\"password\":\"ThrowawayPass1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         Long throwawayUserId = extractLongField(createResult, "id");
@@ -996,8 +995,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/users")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"" + secondOperatorUsername + "\",\"password\":\"Operator2Pass1!\",\"email\":\""
-                                + secondOperatorUsername + "@validdoc.local\",\"role\":\"OPERATOR\"}"))
+                        .content("{\"username\":\"" + secondOperatorUsername + "\",\"password\":\"Operator2Pass1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isCreated());
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")

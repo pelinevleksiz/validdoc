@@ -37,14 +37,11 @@ public class OcrService {
 
     private static final Logger log = LoggerFactory.getLogger(OcrService.class);
 
-    private final TesseractFactory tesseractFactory;
     private final ThreadLocal<Tesseract> tesseractHolder;
 
     public OcrService(TesseractFactory tesseractFactory) {
-        this.tesseractFactory = tesseractFactory;
         this.tesseractHolder = ThreadLocal.withInitial(tesseractFactory::create);
     }
-
     public List<SegmentReading> process(Map<Integer, BufferedImage> pages, Template template, DocumentLanguage language) throws TesseractException {
         if (pages == null || pages.isEmpty()) {
             throw new IllegalArgumentException("ocr processing failed: page map cannot be null or empty");

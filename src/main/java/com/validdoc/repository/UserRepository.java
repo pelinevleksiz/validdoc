@@ -15,8 +15,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByUsernameAndActiveTrue(String username);
 
-    long countByRole(UserRole role);
-
     long countByRoleAndActiveTrue(UserRole role);
 
     Page<User> findByActiveTrue(Pageable pageable);

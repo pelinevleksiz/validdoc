@@ -5,19 +5,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
-
 @Repository
 public interface AuditLogRepository extends org.springframework.data.repository.Repository<AuditLog, Long> {
 
     AuditLog save(AuditLog auditLog);
-
-    Optional<AuditLog> findById(Long id);
-
-    List<AuditLog> findAll();
-
-    List<AuditLog> findByDocumentId(Long documentId);
 
     Page<AuditLog> findAll(Pageable pageable);
 
