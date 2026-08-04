@@ -1296,4 +1296,43 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(greaterThanOrEqualTo(1)));
     }
+
+    @Test
+    @Order(54)
+    void frameworkExceptionsMapToProperErrorCodes() throws Exception {
+        mockMvc.perform(get("/api/does-not-exist")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        mockMvc.perform(delete("/api/auth/login"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+
+        mockMvc.perform(get("/api/documents/not-a-number")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER_TYPE"));
+
+        MockMultipartFile file = new MockMultipartFile("file", "preview-missing-param.png", "image/png", generateInkImage(true));
+        mockMvc.perform(multipart("/api/templates/preview")
+                        .file(file)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MISSING_REQUEST_PARAMETER"));
+    }
+
+    @Test
+    @Order(55)
+    void previewRejectsSegmentWithMissingCoordinatesInsteadOfCrashing() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "preview-bad.png", "image/png", generateInkImage(true));
+        String segmentsJson = "[{\"label\":\"Imza\",\"page\":1,\"x\":null,\"y\":0,\"w\":100,\"h\":100}]";
+
+        mockMvc.perform(multipart("/api/templates/preview")
+                        .file(file)
+                        .param("segments", segmentsJson)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PREVIEW_FAILED"));
+    }
 }

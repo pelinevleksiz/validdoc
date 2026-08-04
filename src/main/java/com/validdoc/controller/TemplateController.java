@@ -166,6 +166,7 @@ public class TemplateController {
             throw new ApiException(ErrorCode.PREVIEW_FAILED, "en az bir segment gereklidir");
         }
         for (TemplatePreviewSegmentRequest segment : segments) {
+            validatePreviewSegmentFields(segment);
             validateSegmentCoordinates(segment.getLabel(), segment.getX(), segment.getY(),
                     segment.getW(), segment.getH());
         }
@@ -197,6 +198,21 @@ public class TemplateController {
                                 .toList()))
                 .toList();
         return new TemplateDetailResponse(template.getId(), template.getName(), template.getPageCount(), segments);
+    }
+
+    private void validatePreviewSegmentFields(TemplatePreviewSegmentRequest segment) {
+        if (segment.getLabel() == null || segment.getLabel().isBlank()) {
+            throw new ApiException(ErrorCode.PREVIEW_FAILED, "label alani zorunludur");
+        }
+        if (segment.getLabel().length() > 30) {
+            throw new ApiException(ErrorCode.PREVIEW_FAILED, "label en fazla 30 karakter olabilir");
+        }
+        if (segment.getPage() == null || segment.getPage() <= 0) {
+            throw new ApiException(ErrorCode.PREVIEW_FAILED, "page pozitif bir tam sayi olmalidir");
+        }
+        if (segment.getX() == null || segment.getY() == null || segment.getW() == null || segment.getH() == null) {
+            throw new ApiException(ErrorCode.PREVIEW_FAILED, "x, y, w, h alanlari zorunludur");
+        }
     }
 
     private void validateSegmentCoordinates(String label, double x, double y, double w, double h) {

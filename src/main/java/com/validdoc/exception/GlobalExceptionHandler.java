@@ -12,10 +12,14 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -78,6 +82,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e, Locale locale) {
         return respond(ErrorCode.DUPLICATE_RECORD, locale);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResourceFound(NoResourceFoundException e, Locale locale) {
+        return respond(ErrorCode.RESOURCE_NOT_FOUND, locale);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException e, Locale locale) {
+        return respond(ErrorCode.METHOD_NOT_ALLOWED, locale);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingParameter(MissingServletRequestParameterException e, Locale locale) {
+        return respond(ErrorCode.MISSING_REQUEST_PARAMETER, locale);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e, Locale locale) {
+        return respond(ErrorCode.INVALID_PARAMETER_TYPE, locale);
     }
 
     @ExceptionHandler(Exception.class)
