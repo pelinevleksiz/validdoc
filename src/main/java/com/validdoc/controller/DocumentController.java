@@ -130,8 +130,7 @@ public class DocumentController {
     public ResponseEntity<PagedResponse<DocumentSummaryResponse>> list(@RequestParam(defaultValue = "0") int page,
                                                                        @RequestParam(defaultValue = "20") int size,
                                                                        Authentication authentication) {
-        User currentUser = userRepository.findByUsernameAndActiveTrue(authentication.getName())
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
+        User currentUser = currentUser(authentication);
 
         Page<DocumentMetadata> result = currentUser.getRole() == UserRole.ADMIN
                 ? documentRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, size))
@@ -143,18 +142,16 @@ public class DocumentController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<DocumentSummaryResponse> getById(@PathVariable Long id) {
-        DocumentMetadata document = documentRepository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
+    public ResponseEntity<DocumentSummaryResponse> getById(@PathVariable Long id, Authentication authentication) {
+        DocumentMetadata document = loadAccessibleDocument(id, authentication);
         return ResponseEntity.ok(toSummary(document));
     }
 
     @GetMapping("/{id}/segments/{segmentId}/image")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<byte[]> getSegmentImage(@PathVariable Long id, @PathVariable Long segmentId) {
-        if (!documentRepository.existsById(id)) {
-            throw new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id));
-        }
+    public ResponseEntity<byte[]> getSegmentImage(@PathVariable Long id, @PathVariable Long segmentId,
+                                                  Authentication authentication) {
+        loadAccessibleDocument(id, authentication);
 
         SegmentImage image = segmentImageRepository.findByDocumentIdAndSegmentId(id, segmentId)
                 .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_IMAGE_NOT_FOUND, String.valueOf(segmentId)));
@@ -169,6 +166,8 @@ public class DocumentController {
                                                                   @PathVariable Long segmentId,
                                                                   @Valid @RequestBody SegmentResolveRequest request,
                                                                   Authentication authentication) {
+        loadAccessibleDocument(id, authentication);
+
         DocumentMetadata document = documentService.resolveSegment(id, segmentId, request.getOutcome(), authentication.getName());
         return ResponseEntity.ok(toSummary(document));
     }
@@ -176,8 +175,13 @@ public class DocumentController {
     @GetMapping("/queue")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<PagedResponse<DocumentSummaryResponse>> queue(@RequestParam(defaultValue = "0") int page,
-                                                                        @RequestParam(defaultValue = "20") int size) {
-        Page<DocumentMetadata> result = documentRepository.findByStatus(DocumentStatus.PENDING_REVIEW, PageRequest.of(page, size));
+                                                                        @RequestParam(defaultValue = "20") int size,
+                                                                        Authentication authentication) {
+        User currentUser = currentUser(authentication);
+        User scopeUser = currentUser.getRole() == UserRole.ADMIN ? null : currentUser;
+
+        Page<DocumentMetadata> result = documentRepository.findByStatusScoped(
+                DocumentStatus.PENDING_REVIEW, scopeUser, PageRequest.of(page, size));
         List<DocumentSummaryResponse> content = result.getContent().stream().map(this::toSummary).toList();
         return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));
     }
@@ -185,9 +189,7 @@ public class DocumentController {
     @GetMapping("/stats")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<DocumentStatsResponse> stats(Authentication authentication) {
-        User currentUser = userRepository.findByUsernameAndActiveTrue(authentication.getName())
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
-
+        User currentUser = currentUser(authentication);
         User scopeUser = currentUser.getRole() == UserRole.ADMIN ? null : currentUser;
 
         ZoneId zone = ZoneId.systemDefault();
@@ -195,7 +197,7 @@ public class DocumentController {
         Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
 
         long todayUploads = documentRepository.countUploadsSince(startOfToday, scopeUser);
-        long pendingReview = documentRepository.countByStatus(DocumentStatus.PENDING_REVIEW);
+        long pendingReview = documentRepository.countByStatusScoped(DocumentStatus.PENDING_REVIEW, scopeUser);
 
         long validated = 0;
         long rejected = 0;
@@ -212,6 +214,24 @@ public class DocumentController {
         Double weeklyValidationRate = totalTerminal > 0 ? (validated * 100.0 / totalTerminal) : null;
 
         return ResponseEntity.ok(new DocumentStatsResponse(todayUploads, pendingReview, weeklyValidationRate));
+    }
+
+    private User currentUser(Authentication authentication) {
+        return userRepository.findByUsernameAndActiveTrue(authentication.getName())
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, authentication.getName()));
+    }
+
+    private DocumentMetadata loadAccessibleDocument(Long id, Authentication authentication) {
+        DocumentMetadata document = documentRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id)));
+
+        User currentUser = currentUser(authentication);
+        boolean isOwner = document.getUploadedBy() != null
+                && document.getUploadedBy().getId().equals(currentUser.getId());
+        if (currentUser.getRole() != UserRole.ADMIN && !isOwner) {
+            throw new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(id));
+        }
+        return document;
     }
 
     private int detectPageCount(byte[] fileBytes, String contentType) {
