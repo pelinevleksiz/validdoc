@@ -1,0 +1,1 @@
+UPDATE segment_rules SET rule_type = 'PHONE' WHERE rule_type = 'PHONE_TR';

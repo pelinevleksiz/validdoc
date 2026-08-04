@@ -7,7 +7,7 @@ public enum SegmentRuleType {
     DATE,
     TC_KIMLIK_NO,
     VKN,
-    PHONE_TR,
+    PHONE,
     EMAIL,
     MIN_LENGTH,
     MAX_LENGTH,

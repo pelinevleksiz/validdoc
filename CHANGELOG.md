@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Centralized the `application/pdf` content-type constant in `FileSignatureValidator`.
 - Extracted the duplicated nav-item visibility filter into a shared `useVisibleNavItems` hook.
 - `template_segments.label` column narrowed to VARCHAR(30) to match the already-enforced DTO validation limit.
+- Phone validation rule (`PHONE_TR` → `PHONE`) now accepts international numbers: separators are stripped and 7-15 digits with an optional leading `+` are required (ITU-T E.164), instead of matching only Turkish mobile format.
 
 ### Fixed
 
