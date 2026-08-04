@@ -65,6 +65,10 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserSummaryResponse> create(@Valid @RequestBody CreateUserRequest request) {
+        if (userRepository.existsByUsernameAndActiveTrue(request.getUsername())) {
+            throw new ApiException(ErrorCode.USERNAME_TAKEN, request.getUsername());
+        }
+
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));

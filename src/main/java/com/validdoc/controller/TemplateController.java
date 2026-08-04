@@ -101,6 +101,10 @@ public class TemplateController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Long>> create(@Valid @RequestBody TemplateRequest request) {
+        if (templateRepository.existsByNameAndActiveTrue(request.getName())) {
+            throw new ApiException(ErrorCode.TEMPLATE_NAME_TAKEN, request.getName());
+        }
+
         for (TemplateSegmentRequest segmentReq : request.getSegments()) {
             validateSegmentCoordinates(segmentReq.getLabel(), segmentReq.getX(), segmentReq.getY(),
                     segmentReq.getW(), segmentReq.getH());

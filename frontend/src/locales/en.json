@@ -48,6 +48,10 @@
     "statsPending": "Pending review",
     "statsWeeklyRate": "Weekly validation rate",
     "statsNoData": "No data yet",
+    "shortcutUploadDesc": "Scan and validate a new document",
+    "shortcutTemplateDesc": "Define a new scanning template",
+    "shortcutUserDesc": "Add a new user to the system",
+    "shortcutReviewDesc": "Work through pending reviews",
     "statsLoadError": "Could not load stats."
   },
   "templates": {

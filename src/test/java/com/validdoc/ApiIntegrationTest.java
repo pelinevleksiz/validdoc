@@ -230,7 +230,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"" + OPERATOR_USERNAME + "\",\"password\":\"OperatorPass1!\",\"role\":\"OPERATOR\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DUPLICATE_RECORD"));
+                .andExpect(jsonPath("$.code").value("USERNAME_TAKEN"));
     }
 
     @Test

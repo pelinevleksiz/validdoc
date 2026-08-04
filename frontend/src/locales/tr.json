@@ -48,7 +48,11 @@
     "statsPending": "İncelemede bekleyen",
     "statsWeeklyRate": "Haftalık geçerlilik oranı",
     "statsNoData": "Henüz veri yok",
-    "statsLoadError": "İstatistikler yüklenemedi."
+    "statsLoadError": "İstatistikler yüklenemedi.",
+    "shortcutUploadDesc": "Yeni bir belge tara ve doğrula",
+  "shortcutTemplateDesc": "Yeni bir tarama şablonu tanımla",
+  "shortcutUserDesc": "Sisteme yeni bir kullanıcı ekle",
+  "shortcutReviewDesc": "Bekleyen incelemeleri tamamla"
   },
   "templates": {
     "title": "Şablonlar",

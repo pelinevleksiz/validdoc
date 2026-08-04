@@ -9,4 +9,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface TemplateRepository extends JpaRepository<Template, Long> {
     Page<Template> findByActiveTrue(Pageable pageable);
+
+    boolean existsByNameAndActiveTrue(String name);
 }
