@@ -116,6 +116,7 @@
     "actionHeader": "Action",
     "byHeader": "Performed by",
     "documentHeader": "Document",
+    "targetUserHeader": "Target User",
     "actions": {
       "USER_DEACTIVATED": "User deactivated",
       "TEMPLATE_DEACTIVATED": "Template deactivated",

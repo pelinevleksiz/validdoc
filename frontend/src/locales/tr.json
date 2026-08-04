@@ -116,6 +116,7 @@
     "actionHeader": "İşlem",
     "byHeader": "Yapan",
     "documentHeader": "Belge",
+    "targetUserHeader": "Hedef Kullanıcı",
     "actions": {
       "USER_DEACTIVATED": "Kullanıcı devre dışı bırakıldı",
       "TEMPLATE_DEACTIVATED": "Şablon devre dışı bırakıldı",
