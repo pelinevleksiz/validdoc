@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audit logs now record the target user for actions like deactivation.
 - Document detail page now shows each segment's cropped image (thumbnail in the list, full view in a side panel on click), colored consistently with the outcome badges used elsewhere.
 - Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
+- Admins can reset another user's password (confirmed by re-entering their own password) without ever viewing the target's current password. The reset user's existing session token remains valid for up to 10 more minutes — a known limitation.
 
 ### Changed
 

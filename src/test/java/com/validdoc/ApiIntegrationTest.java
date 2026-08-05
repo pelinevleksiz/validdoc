@@ -1483,4 +1483,55 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("OVERRIDE_OUTCOME_UNCHANGED"));
     }
+
+    @Test
+    @Order(61)
+    void adminCanResetUserPasswordWithOwnPasswordConfirmation() throws Exception {
+        String targetUsername = "reset_target_" + RUN_ID;
+        MvcResult createResult = mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + targetUsername + "\",\"password\":\"OldPassword1!\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long targetUserId = extractLongField(createResult, "id");
+
+        String currentAdminPassword = "NewAdminPass1!";
+
+        mockMvc.perform(put("/api/users/" + targetUserId + "/password")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"adminPassword\":\"WrongAdminPassword1!\",\"newPassword\":\"NewTargetPass1!\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("BAD_CREDENTIALS"));
+
+        mockMvc.perform(put("/api/users/" + targetUserId + "/password")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"adminPassword\":\"" + currentAdminPassword + "\",\"newPassword\":\"NewTargetPass1!\"}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + targetUsername + "\",\"password\":\"OldPassword1!\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + targetUsername + "\",\"password\":\"NewTargetPass1!\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/audit-logs?size=50")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.action == 'PASSWORD_RESET_BY_ADMIN')]").exists());
+    }
 }

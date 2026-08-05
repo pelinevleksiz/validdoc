@@ -24,6 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import CreateUserDialog from "@/components/users/CreateUserDialog"
+import ResetPasswordDialog from "@/components/users/ResetPasswordDialog"
+import { useAuth } from "@/contexts/AuthContext"
 import LoadingState from "@/components/ui/loading-state"
 import EmptyState from "@/components/ui/empty-state"
 
@@ -45,12 +47,14 @@ const PAGE_SIZE = 20
 
 function Users() {
   const { t } = useTranslation()
+  const { username: currentUsername } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const openCreateOnLoad = searchParams.get("new") === "1"
   const [page, setPage] = useState(0)
   const [userPendingDeactivation, setUserPendingDeactivation] = useState<UserSummary | null>(null)
   const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
+  const [userPendingPasswordReset, setUserPendingPasswordReset] = useState<UserSummary | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["users", page],
@@ -113,6 +117,15 @@ function Users() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
+                    {user.username !== currentUsername && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setUserPendingPasswordReset(user)}
+                      >
+                        {t("users.resetPassword")}
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -182,6 +195,15 @@ function Users() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {userPendingPasswordReset && (
+        <ResetPasswordDialog
+          userId={userPendingPasswordReset.id}
+          username={userPendingPasswordReset.username}
+          open={userPendingPasswordReset !== null}
+          onOpenChange={(open) => !open && setUserPendingPasswordReset(null)}
+        />
+      )}
     </div>
   )
 }

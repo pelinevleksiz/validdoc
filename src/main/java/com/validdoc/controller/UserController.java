@@ -1,5 +1,6 @@
 package com.validdoc.controller;
 
+import com.validdoc.dto.request.AdminPasswordResetRequest;
 import com.validdoc.dto.request.ChangePasswordRequest;
 import com.validdoc.dto.request.CreateUserRequest;
 import com.validdoc.dto.response.PagedResponse;
@@ -112,6 +113,29 @@ public class UserController {
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         auditLogRepository.save(new AuditLog("PASSWORD_CHANGED", username));
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/password")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> resetUserPassword(@PathVariable Long id,
+                                                  Authentication authentication,
+                                                  @Valid @RequestBody AdminPasswordResetRequest request) {
+        String adminUsername = authentication.getName();
+        User admin = userRepository.findByUsernameAndActiveTrue(adminUsername)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, adminUsername));
+
+        if (!passwordEncoder.matches(request.getAdminPassword(), admin.getPassword())) {
+            throw new ApiException(ErrorCode.BAD_CREDENTIALS, adminUsername);
+        }
+
+        User target = userRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, String.valueOf(id)));
+
+        target.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(target);
+        auditLogRepository.save(new AuditLog("PASSWORD_RESET_BY_ADMIN", adminUsername, target.getId()));
 
         return ResponseEntity.noContent().build();
     }
