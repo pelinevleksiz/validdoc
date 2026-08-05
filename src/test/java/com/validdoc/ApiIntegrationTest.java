@@ -1,6 +1,7 @@
 package com.validdoc;
 
 import com.validdoc.config.DocumentGeometry;
+import com.validdoc.dto.internal.SegmentReading;
 import com.validdoc.dto.internal.SegmentResultEntry;
 import com.validdoc.model.*;
 import com.validdoc.model.enums.DocumentStatus;
@@ -46,8 +47,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.validdoc.dto.internal.ValidationResult;
+import com.validdoc.service.ValidationService;
+
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -91,6 +96,9 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private RetentionCleanupJob retentionCleanupJob;
+
+    @Autowired
+    private ValidationService validationService;
 
     @Autowired
     private JsonMapper jsonMapper;
@@ -1533,5 +1541,117 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[?(@.action == 'PASSWORD_RESET_BY_ADMIN')]").exists());
+    }
+
+    @Test
+    @Order(62)
+    void tcKimlikNoChecksumValidatesRealAlgorithm() {
+        TemplateSegment segment = new TemplateSegment();
+        segment.setId(9001L);
+        segment.setLabel("TC");
+        SegmentRule rule = new SegmentRule();
+        rule.setSegment(segment);
+        rule.setRuleType(SegmentRuleType.TC_KIMLIK_NO);
+        segment.getRules().add(rule);
+
+        SegmentReading validReading = new SegmentReading(segment, "10562272296", null, 95.0, null);
+        SegmentReading invalidReading = new SegmentReading(segment, "11111111111", null, 95.0, null);
+        SegmentReading leadingZeroReading = new SegmentReading(segment, "01562272296", null, 95.0, null);
+
+        ValidationResult validResult = validationService.validate(List.of(validReading));
+        ValidationResult invalidResult = validationService.validate(List.of(invalidReading));
+        ValidationResult leadingZeroResult = validationService.validate(List.of(leadingZeroReading));
+
+        assertEquals(SegmentOutcome.FILLED_VALID, validResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_INVALID, invalidResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_INVALID, leadingZeroResult.getEntries().get(0).getOutcome());
+    }
+
+    @Test
+    @Order(63)
+    void vknChecksumValidatesRealAlgorithm() {
+        TemplateSegment segment = new TemplateSegment();
+        segment.setId(9002L);
+        segment.setLabel("VKN");
+        SegmentRule rule = new SegmentRule();
+        rule.setSegment(segment);
+        rule.setRuleType(SegmentRuleType.VKN);
+        segment.getRules().add(rule);
+
+        SegmentReading validReading = new SegmentReading(segment, "1234567890", null, 95.0, null);
+        SegmentReading invalidReading = new SegmentReading(segment, "1234567891", null, 95.0, null);
+
+        ValidationResult validResult = validationService.validate(List.of(validReading));
+        ValidationResult invalidResult = validationService.validate(List.of(invalidReading));
+
+        assertEquals(SegmentOutcome.FILLED_VALID, validResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_INVALID, invalidResult.getEntries().get(0).getOutcome());
+    }
+
+    @Test
+    @Order(64)
+    void phoneRuleAcceptsInternationalNumbersAndStripsSeparators() {
+        TemplateSegment segment = new TemplateSegment();
+        segment.setId(9003L);
+        segment.setLabel("Telefon");
+        SegmentRule rule = new SegmentRule();
+        rule.setSegment(segment);
+        rule.setRuleType(SegmentRuleType.PHONE);
+        segment.getRules().add(rule);
+
+        SegmentReading internationalReading = new SegmentReading(segment, "+905321234567", null, 95.0, null);
+        SegmentReading withSeparatorsReading = new SegmentReading(segment, "0532 123 45 67", null, 95.0, null);
+        SegmentReading tooShortReading = new SegmentReading(segment, "123", null, 95.0, null);
+        SegmentReading tooLongReading = new SegmentReading(segment, "1234567890123456", null, 95.0, null);
+
+        ValidationResult internationalResult = validationService.validate(List.of(internationalReading));
+        ValidationResult withSeparatorsResult = validationService.validate(List.of(withSeparatorsReading));
+        ValidationResult tooShortResult = validationService.validate(List.of(tooShortReading));
+        ValidationResult tooLongResult = validationService.validate(List.of(tooLongReading));
+
+        assertEquals(SegmentOutcome.FILLED_VALID, internationalResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_VALID, withSeparatorsResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_INVALID, tooShortResult.getEntries().get(0).getOutcome());
+        assertEquals(SegmentOutcome.FILLED_INVALID, tooLongResult.getEntries().get(0).getOutcome());
+    }
+
+    @Test
+    @Order(65)
+    void inkSegmentImageIsPersistedAfterValidation() throws Exception {
+        MvcResult detailResult = mockMvc.perform(get("/api/templates/" + inkTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        Matcher idMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailResult.getResponse().getContentAsString());
+        assertTrue(idMatcher.find(), "Template id bulunamadi");
+        assertTrue(idMatcher.find(), "Segment id bulunamadi");
+        Long inkSegmentId = Long.valueOf(idMatcher.group(1));
+
+        mockMvc.perform(get("/api/documents/" + signedDocumentId + "/segments/" + inkSegmentId + "/image")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG));
+    }
+
+    @Test
+    @Order(66)
+    void auditLogRecordsCorrectTargetUserIdOnDeactivation() throws Exception {
+        String targetUsername = "audit_target_" + RUN_ID;
+        MvcResult createResult = mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + targetUsername + "\",\"password\":\"AuditTargetPass1!\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long targetUserId = extractLongField(createResult, "id");
+
+        mockMvc.perform(delete("/api/users/" + targetUserId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/admin/audit-logs?size=50")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.action == 'USER_DEACTIVATED' && @.targetUserId == " + targetUserId + ")]").exists());
     }
 }
