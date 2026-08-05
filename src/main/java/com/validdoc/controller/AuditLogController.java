@@ -36,7 +36,7 @@ public class AuditLogController {
                 : auditLogRepository.findAll(pageRequest);
 
         List<AuditLogResponse> content = result.getContent().stream()
-                .map(log -> new AuditLogResponse(log.getId(), log.getDocumentId(), log.getAction(), log.getPerformedBy(), log.getTargetUserId(), log.getTimestamp()))
+                .map(log -> new AuditLogResponse(log.getId(), log.getDocumentId(), log.getAction(), log.getPerformedBy(), log.getTargetUserId(), log.getDetails(), log.getTimestamp()))
                 .toList();
 
         return ResponseEntity.ok(new PagedResponse<>(content, page, size, result.getTotalElements(), result.getTotalPages()));

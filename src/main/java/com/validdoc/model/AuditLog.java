@@ -25,28 +25,36 @@ public class AuditLog {
     @Column(name = "target_user_id")
     private Long targetUserId;
 
+    @Column(columnDefinition = "TEXT")
+    private String details;
+
     @Column(nullable = false)
     private Instant timestamp = Instant.now();
 
     public AuditLog() {}
 
     public AuditLog(String action, String performedBy) {
-        this(null, action, performedBy, null);
+        this(null, action, performedBy, null, null);
     }
 
     public AuditLog(Long documentId, String action, String performedBy) {
-        this(documentId, action, performedBy, null);
+        this(documentId, action, performedBy, null, null);
     }
 
     public AuditLog(String action, String performedBy, Long targetUserId) {
-        this(null, action, performedBy, targetUserId);
+        this(null, action, performedBy, targetUserId, null);
     }
 
-    private AuditLog(Long documentId, String action, String performedBy, Long targetUserId) {
+    public AuditLog(Long documentId, String action, String performedBy, String details) {
+        this(documentId, action, performedBy, null, details);
+    }
+
+    private AuditLog(Long documentId, String action, String performedBy, Long targetUserId, String details) {
         this.documentId = documentId;
         this.action = action;
         this.performedBy = performedBy;
         this.targetUserId = targetUserId;
+        this.details = details;
         this.timestamp = Instant.now();
     }
 
@@ -64,6 +72,9 @@ public class AuditLog {
 
     public Long getTargetUserId() { return targetUserId; }
     public void setTargetUserId(Long targetUserId) { this.targetUserId = targetUserId; }
+
+    public String getDetails() { return details; }
+    public void setDetails(String details) { this.details = details; }
 
     public Instant getTimestamp() { return timestamp; }
     public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }

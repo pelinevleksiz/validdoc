@@ -1,5 +1,6 @@
 package com.validdoc.controller;
 
+import com.validdoc.dto.request.SegmentOverrideRequest;
 import com.validdoc.dto.response.DocumentStatsResponse;
 import com.validdoc.dto.response.DocumentSummaryResponse;
 import com.validdoc.dto.response.PagedResponse;
@@ -171,6 +172,17 @@ public class DocumentController {
         loadAccessibleDocument(id, authentication);
 
         DocumentMetadata document = documentService.resolveSegment(id, segmentId, request.getOutcome(), authentication.getName());
+        return ResponseEntity.ok(toSummary(document));
+    }
+
+    @PostMapping("/{id}/segments/{segmentId}/override")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DocumentSummaryResponse> overrideSegment(@PathVariable Long id,
+                                                                   @PathVariable Long segmentId,
+                                                                   @Valid @RequestBody SegmentOverrideRequest request,
+                                                                   Authentication authentication) {
+        DocumentMetadata document = documentService.overrideSegment(
+                id, segmentId, request.getOutcome(), request.getReasonCode(), request.getNote(), authentication.getName());
         return ResponseEntity.ok(toSummary(document));
     }
 
