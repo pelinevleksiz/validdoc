@@ -17,11 +17,18 @@ import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,6 +37,8 @@ import java.util.stream.Collectors;
 public class OcrService {
 
     private static final Logger log = LoggerFactory.getLogger(OcrService.class);
+    private static final int MAX_STORAGE_WIDTH_PX = 1000;
+    private static final float JPEG_QUALITY = 0.75f;
 
     private final ThreadLocal<Tesseract> tesseractHolder;
 
@@ -60,15 +69,17 @@ public class OcrService {
             validateSegmentBounds(segment, page);
             BufferedImage region = ImageProcessingUtil.safeCrop(page, (int) segment.getX(), (int) segment.getY(),
                     (int) segment.getW(), (int) segment.getH());
+            boolean inkSegment = isInkSegment(segment);
 
-            if (isInkSegment(segment)) {
+            if (inkSegment) {
                 double density = ImageProcessingUtil.computeInkDensity(region);
-                readings.add(new SegmentReading(segment, null, density, null, null));
+                byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
+                readings.add(new SegmentReading(segment, null, density, null, croppedImage));
             } else {
                 OcrExtraction extraction = runOcr(tesseract, region, segment.getLabel());
-                byte[] croppedImagePng = encodeToPng(region, segment.getLabel());
+                byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
                 Double pixelDensity = extraction.text().isEmpty() ? ImageProcessingUtil.computeInkDensity(region) : null;
-                readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImagePng));
+                readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImage));
             }
         }
         return readings;
@@ -90,15 +101,52 @@ public class OcrService {
         }
     }
 
-    private byte[] encodeToPng(BufferedImage region, String segmentLabel) {
+    private byte[] encodeForStorage(BufferedImage region, boolean preserveColor, String segmentLabel) {
         try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(region, "png", baos);
-            return baos.toByteArray();
+            BufferedImage prepared = preserveColor ? region : toGrayscale(region);
+            BufferedImage resized = scaleToMaxWidth(prepared, MAX_STORAGE_WIDTH_PX);
+            return writeJpeg(resized, JPEG_QUALITY);
         } catch (IOException e) {
-            log.warn("Segment goruntusu PNG'e cevrilemedi, label={}", segmentLabel, e);
+            log.warn("Segment goruntusu saklama icin kodlanamadi, label={}", segmentLabel, e);
             return null;
         }
+    }
+
+    private BufferedImage toGrayscale(BufferedImage source) {
+        BufferedImage gray = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = gray.createGraphics();
+        g.drawImage(source, 0, 0, null);
+        g.dispose();
+        return gray;
+    }
+
+    private BufferedImage scaleToMaxWidth(BufferedImage source, int maxWidth) {
+        if (source.getWidth() <= maxWidth) {
+            return source;
+        }
+        int targetHeight = (int) ((double) source.getHeight() * maxWidth / source.getWidth());
+        BufferedImage scaled = new BufferedImage(maxWidth, targetHeight, source.getType());
+        Graphics2D g = scaled.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(source, 0, 0, maxWidth, targetHeight, null);
+        g.dispose();
+        return scaled;
+    }
+
+    private byte[] writeJpeg(BufferedImage image, float quality) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        ImageWriter writer = writers.next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(quality);
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+            writer.setOutput(ios);
+            writer.write(null, new IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        return baos.toByteArray();
     }
 
     private boolean isInkSegment(TemplateSegment segment) {
@@ -114,7 +162,7 @@ public class OcrService {
         int h = (int) segment.getH();
         if (w <= 0 || h <= 0 || x < 0 || y < 0 || x >= image.getWidth() || y >= image.getHeight()) {
             throw new TemplateDefinitionException(
-                    "Template segmenti geçersiz koordinatlara sahip, label=" + segment.getLabel()
+                    "Template segmenti gecersiz koordinatlara sahip, label=" + segment.getLabel()
                             + " page=" + segment.getPage() + " x=" + x + " y=" + y + " w=" + w + " h=" + h, null);
         }
     }

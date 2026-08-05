@@ -154,8 +154,8 @@ public class DocumentController {
         SegmentImage image = segmentImageRepository.findByDocumentIdAndSegmentId(id, segmentId)
                 .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_IMAGE_NOT_FOUND, String.valueOf(segmentId)));
 
-        byte[] pngBytes = Base64.getDecoder().decode(image.getImageDataBase64());
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(pngBytes);
+        byte[] imageBytes = Base64.getDecoder().decode(image.getImageDataBase64());
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(imageBytes);
     }
 
     @PostMapping("/{id}/segments/{segmentId}/resolve")

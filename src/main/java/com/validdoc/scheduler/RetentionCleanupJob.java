@@ -66,9 +66,7 @@ public class RetentionCleanupJob {
             document.setStatus(DocumentStatus.REJECTED_INVALID);
             document.setPurgeAt(Instant.now().plus(validationSettingsService.getRetentionDays(), ChronoUnit.DAYS));
             documentRepository.save(document);
-            segmentImageRepository.deleteByDocumentId(document.getId());
-            auditLogRepository.save(new AuditLog(document.getId(), ABANDONED_REVIEW_ACTION, "SYSTEM"));
-        }
+            auditLogRepository.save(new AuditLog(document.getId(), ABANDONED_REVIEW_ACTION, "SYSTEM"));        }
 
         if (!abandoned.isEmpty()) {
             log.info("Terk edilmis {} PENDING_REVIEW belgesi otomatik REJECTED_INVALID olarak isaretlendi", abandoned.size());
