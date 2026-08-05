@@ -136,7 +136,7 @@
     "MAX_LENGTH": "Maksimum uzunluk",
     "TC_KIMLIK_NO": "TC Kimlik No",
     "VKN": "Vergi Kimlik No (VKN)",
-    "PHONE_TR": "Telefon (TR)",
+    "PHONE": "Telefon",
     "EMAIL": "E-posta",
     "SIGNATURE_INK": "İmza",
     "STAMP_INK": "Mühür"
@@ -197,6 +197,7 @@
     "noResults": "Henüz segment sonucu yok.",
     "page": "Sayfa {{page}}",
     "value": "Değer: {{value}}",
+    "noImage": "Görüntü yok",
     "failedRules": "Başarısız kurallar: {{rules}}"
   },
   "reviewQueue": {

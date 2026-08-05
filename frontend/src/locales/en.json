@@ -136,7 +136,7 @@
     "MAX_LENGTH": "Maximum length",
     "TC_KIMLIK_NO": "National ID (TC)",
     "VKN": "Tax ID (VKN)",
-    "PHONE_TR": "Phone (TR)",
+    "PHONE": "Phone",
     "EMAIL": "Email",
     "SIGNATURE_INK": "Signature",
     "STAMP_INK": "Stamp"
@@ -197,6 +197,7 @@
     "noResults": "No segment results yet.",
     "page": "Page {{page}}",
     "value": "Value: {{value}}",
+    "noImage": "No image",
     "failedRules": "Failed rules: {{rules}}"
   },
   "reviewQueue": {
