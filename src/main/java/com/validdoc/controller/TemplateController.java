@@ -109,6 +109,7 @@ public class TemplateController {
             validateSegmentCoordinates(segmentReq.getLabel(), segmentReq.getX(), segmentReq.getY(),
                     segmentReq.getW(), segmentReq.getH());
             validateSegmentRules(segmentReq);
+            validateSegmentPage(segmentReq, request.getPageCount());
         }
 
         Template template = new Template();
@@ -224,6 +225,12 @@ public class TemplateController {
                 || x + w > DocumentGeometry.A4_WIDTH_PX
                 || y + h > DocumentGeometry.A4_HEIGHT_PX) {
             throw new ApiException(ErrorCode.INVALID_SEGMENT_COORDINATES, label);
+        }
+    }
+
+    private void validateSegmentPage(TemplateSegmentRequest segment, int pageCount) {
+        if (segment.getPage() == null || segment.getPage() < 1 || segment.getPage() > pageCount) {
+            throw new ApiException(ErrorCode.SEGMENT_PAGE_OUT_OF_BOUNDS, segment.getLabel(), pageCount);
         }
     }
 

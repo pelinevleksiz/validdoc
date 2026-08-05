@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `segment_images` now has proper foreign keys to `document_metadata` and `template_segments`.
 - Template and username uniqueness conflicts now return distinct `TEMPLATE_NAME_TAKEN`/`USERNAME_TAKEN` codes instead of a generic `DUPLICATE_RECORD`.
 - `JwtService`'s misleading 1-hour fallback default (actual configured value: 10 minutes) removed; the app now fails fast if `jwt.expiration-ms` is missing.
+- Templates could be saved with a segment referencing a page number beyond the template's declared page count, causing every upload against that template to fail; this is now rejected at template creation with a clear error.
 
 ### Removed
 

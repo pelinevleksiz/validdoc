@@ -33,6 +33,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.validdoc.model.enums.SegmentRuleType;
+
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -46,6 +48,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import com.validdoc.model.TemplateSegment;
+import com.validdoc.model.SegmentRule;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -98,6 +103,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
 
     private static String adminToken;
     private static String operatorToken;
@@ -562,23 +568,27 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
     @Test
     @Order(24)
     void pageMismatchRoutesToPendingReview() throws Exception {
-        String requestBody = """
-                {
-                  "name": "Multi Page Template %s",
-                  "segments": [
-                    { "label": "Page2Field", "page": 2, "x": 0, "y": 0, "w": 100, "h": 100,
-                      "rules": [ { "type": "DIGITS_ONLY" } ] }
-                  ]
-                }
-                """.formatted(RUN_ID);
+        Template inconsistentTemplate = new Template();
+        inconsistentTemplate.setName("Multi Page Template " + RUN_ID);
+        inconsistentTemplate.setPageCount(1);
 
-        MvcResult templateResult = mockMvc.perform(post("/api/templates")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
-                .andExpect(status().isCreated())
-                .andReturn();
-        multiPageTemplateId = extractLongField(templateResult, "id");
+        TemplateSegment segment = new TemplateSegment();
+        segment.setTemplate(inconsistentTemplate);
+        segment.setLabel("Page2Field");
+        segment.setPage(2);
+        segment.setX(0.0);
+        segment.setY(0.0);
+        segment.setW(100.0);
+        segment.setH(100.0);
+
+        SegmentRule rule = new SegmentRule();
+        rule.setSegment(segment);
+        rule.setRuleType(SegmentRuleType.DIGITS_ONLY);
+        segment.getRules().add(rule);
+
+        inconsistentTemplate.getSegments().add(segment);
+        inconsistentTemplate = templateRepository.save(inconsistentTemplate);
+        multiPageTemplateId = inconsistentTemplate.getId();
 
         MockMultipartFile file = new MockMultipartFile("file", "single-page.png", "image/png", generateInkImage(false));
 

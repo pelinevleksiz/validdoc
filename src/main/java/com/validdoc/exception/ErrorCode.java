@@ -24,6 +24,7 @@ public enum ErrorCode {
     SEGMENT_ALREADY_RESOLVED(HttpStatus.CONFLICT, "error.segment.already_resolved"),
     INVALID_SEGMENT_RESOLUTION_OUTCOME(HttpStatus.BAD_REQUEST, "error.segment.invalid_resolution_outcome"),
     INVALID_SEGMENT_COORDINATES(HttpStatus.BAD_REQUEST, "error.template.invalid_segment_coordinates"),
+    SEGMENT_PAGE_OUT_OF_BOUNDS(HttpStatus.BAD_REQUEST, "error.template.segment_page_out_of_bounds"),
     INVALID_SEGMENT_RULE_COMBINATION(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_combination"),
     INVALID_RULE_PARAM(HttpStatus.BAD_REQUEST, "error.template.invalid_rule_param"),
     TEMPLATE_ID_REQUIRED(HttpStatus.BAD_REQUEST, "error.document.template_id_required"),
