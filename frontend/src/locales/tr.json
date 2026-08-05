@@ -85,6 +85,14 @@
     "role": "Rol",
     "selectRole": "Rol seçin",
     "create": "Oluştur",
+    "resetPassword": "Şifre Sıfırla",
+    "resetPasswordDialogTitle": "Şifre Sıfırla",
+    "resetPasswordDialogPrefix": "",
+    "resetPasswordDialogSuffix": "adlı kullanıcının şifresini değiştirmek üzeresiniz. Devam etmek için kendi şifrenizle kimliğinizi doğrulayın.",
+    "yourPasswordLabel": "Şifreniz",
+    "newPasswordLabel": "Yeni şifre",
+    "resetPasswordSubmit": "Şifreyi Sıfırla",
+    "resettingPassword": "Sıfırlanıyor...",
     "creating": "Oluşturuluyor..."
   },
   "changePassword": {

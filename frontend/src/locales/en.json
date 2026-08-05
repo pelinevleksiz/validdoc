@@ -85,6 +85,14 @@
     "role": "Role",
     "selectRole": "Select role",
     "create": "Create",
+    "resetPassword": "Reset Password",
+    "resetPasswordDialogTitle": "Reset Password",
+    "resetPasswordDialogPrefix": "You're about to change the password for",
+    "resetPasswordDialogSuffix": ". Confirm your identity with your own password to continue.",
+    "yourPasswordLabel": "Your password",
+    "newPasswordLabel": "New password",
+    "resetPasswordSubmit": "Reset Password",
+    "resettingPassword": "Resetting...",
     "creating": "Creating..."
   },
   "changePassword": {
