@@ -193,8 +193,9 @@ function OverrideSection({
   return (
     <div className="flex flex-col gap-3 rounded-md border p-3">
       <div>
-        <label className="text-xs font-medium text-muted-foreground">{t("documents.overrideOutcomeLabel")}</label>
+        <label htmlFor="override-outcome-select" className="text-xs font-medium text-muted-foreground">{t("documents.overrideOutcomeLabel")}</label>
         <select
+          id="override-outcome-select"
           value={outcome}
           onChange={(e) => setOutcome(e.target.value as OverrideOutcome)}
           className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"

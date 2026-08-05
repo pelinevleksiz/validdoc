@@ -67,7 +67,7 @@ describe("Login", () => {
     const user = userEvent.setup()
     const axiosError = Object.assign(new Error("Unauthorized"), {
       isAxiosError: true,
-      response: { status: 401, data: { code: "BAD_CREDENTIALS" } },
+      response: { status: 401, data: { code: "BAD_CREDENTIALS", message: "Kullanıcı adı veya şifre hatalı." } },
     })
     vi.mocked(api.post).mockRejectedValue(axiosError)
 
