@@ -3,7 +3,6 @@ package com.validdoc;
 import com.validdoc.config.DocumentGeometry;
 import com.validdoc.dto.internal.SegmentResultEntry;
 import com.validdoc.model.DocumentMetadata;
-import com.validdoc.model.SegmentImage;
 import com.validdoc.model.Template;
 import com.validdoc.model.User;
 import com.validdoc.model.enums.DocumentStatus;
@@ -44,7 +43,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -692,13 +690,6 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         document.setSegmentResults(segmentResultsJson);
         documentRepository.save(document);
 
-        SegmentImage image = new SegmentImage();
-        image.setDocumentId(resolveTestDocumentId);
-        image.setSegmentId(resolveSegmentBId);
-        image.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
-        image.setCreatedAt(Instant.now());
-        segmentImageRepository.save(image);
-
         mockMvc.perform(get("/api/documents/" + resolveTestDocumentId)
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
@@ -715,8 +706,8 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
 
         String contentType = result.getResponse().getContentType();
-        assertTrue(contentType != null && contentType.startsWith("image/png"),
-                "Beklenen content-type image/png degil: " + contentType);
+        assertTrue(contentType != null && contentType.startsWith("image/jpeg"),
+                "Beklenen content-type image/jpeg değil: " + contentType);
         assertTrue(result.getResponse().getContentAsByteArray().length > 0, "Segment goruntusu bos donuyor");
     }
 
@@ -770,12 +761,17 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     @Order(34)
-    void segmentImageIsDeletedAfterResolve() throws Exception {
-        mockMvc.perform(get("/api/documents/" + resolveTestDocumentId
+    void segmentImageRemainsAvailableAfterResolve() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/documents/" + resolveTestDocumentId
                         + "/segments/" + resolveSegmentBId + "/image")
                         .header("Authorization", "Bearer " + operatorToken))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("SEGMENT_IMAGE_NOT_FOUND"));
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String contentType = result.getResponse().getContentType();
+        assertTrue(contentType != null && contentType.startsWith("image/jpeg"),
+                "Beklenen content-type image/jpeg degil: " + contentType);
+        assertTrue(result.getResponse().getContentAsByteArray().length > 0, "Segment goruntusu bos donuyor");
     }
 
     @Test
@@ -1228,13 +1224,6 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         document.setStatus(DocumentStatus.PENDING_REVIEW);
         document.setSegmentResults(jsonMapper.writeValueAsString(List.of(entry)));
         documentRepository.save(document);
-
-        SegmentImage image = new SegmentImage();
-        image.setDocumentId(idorDocumentId);
-        image.setSegmentId(idorSegmentId);
-        image.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
-        image.setCreatedAt(Instant.now());
-        segmentImageRepository.save(image);
 
         String outsiderUsername = "operator_outsider_" + RUN_ID;
         mockMvc.perform(post("/api/users")

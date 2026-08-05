@@ -114,7 +114,7 @@ public class DocumentService {
             ValidationResult result = validationService.validate(readings);
 
             applyValidationResult(document, result);
-            persistPendingReviewImages(documentId, readings, result);
+            persistSegmentImages(documentId, readings, result);
             finalizeDocument(document, "AUTO_" + document.getStatus().name());
         } catch (PageOutOfBoundsException e) {
             log.error("Belge isleme motoru hatasi, documentId={}", documentId, e);
@@ -180,8 +180,6 @@ public class DocumentService {
         target.setResolvedBy(resolvedBy);
         target.setResolvedAt(Instant.now());
 
-        segmentImageRepository.deleteByDocumentIdAndSegmentId(documentId, segmentId);
-
         boolean anyStillPending = entries.stream().anyMatch(e -> e.getOutcome() == SegmentOutcome.PENDING_REVIEW);
         if (!anyStillPending) {
             DocumentStatus recomputed = validationService.deriveStatus(entries);
@@ -244,21 +242,18 @@ public class DocumentService {
         }
     }
 
-    private void persistPendingReviewImages(Long documentId, List<SegmentReading> readings, ValidationResult result) {
+    private void persistSegmentImages(Long documentId, List<SegmentReading> readings, ValidationResult result) {
         if (result.getEntries() == null) {
             return;
         }
         Map<Long, byte[]> imagesBySegmentId = readings.stream()
-                .filter(r -> r.getSegment().getId() != null && r.getCroppedImagePng() != null)
-                .collect(Collectors.toMap(r -> r.getSegment().getId(), SegmentReading::getCroppedImagePng, (a, b) -> a));
+                .filter(r -> r.getSegment().getId() != null && r.getCroppedImage() != null)
+                .collect(Collectors.toMap(r -> r.getSegment().getId(), SegmentReading::getCroppedImage, (a, b) -> a));
 
         for (SegmentResultEntry entry : result.getEntries()) {
-            if (entry.getOutcome() != SegmentOutcome.PENDING_REVIEW) {
-                continue;
-            }
             byte[] imageBytes = imagesBySegmentId.get(entry.getSegmentId());
             if (imageBytes == null) {
-                log.warn("PENDING_REVIEW segment icin goruntu bulunamadi, documentId={} segmentId={}", documentId, entry.getSegmentId());
+                log.warn("Segment icin goruntu bulunamadi, documentId={} segmentId={}", documentId, entry.getSegmentId());
                 continue;
             }
             SegmentImage image = new SegmentImage();
