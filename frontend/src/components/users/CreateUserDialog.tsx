@@ -3,9 +3,9 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -37,13 +37,11 @@ const createUserSchema = z.object({
 
 type CreateUserValues = z.infer<typeof createUserSchema>
 
-const KNOWN_ERROR_CODES = ["DUPLICATE_RECORD"]
-
 function CreateUserDialog({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(defaultOpen)
-  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
+  const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null)
 
   const form = useForm<CreateUserValues>({
     resolver: zodResolver(createUserSchema),
@@ -61,13 +59,12 @@ function CreateUserDialog({ defaultOpen = false }: { defaultOpen?: boolean }) {
       setOpen(false)
     },
     onError: (error: unknown) => {
-      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
-      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
+      setServerErrorMessage(getErrorMessage(error))
     },
   })
 
   function onSubmit(values: CreateUserValues) {
-    setServerErrorCode(null)
+    setServerErrorMessage(null)
     createMutation.mutate(values)
   }
 
@@ -79,9 +76,9 @@ function CreateUserDialog({ defaultOpen = false }: { defaultOpen?: boolean }) {
           <DialogTitle>{t("users.createDialogTitle")}</DialogTitle>
         </DialogHeader>
 
-        {serverErrorCode && (
+        {serverErrorMessage && (
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {t(`errors.${serverErrorCode}`)}
+            {serverErrorMessage}
           </div>
         )}
 

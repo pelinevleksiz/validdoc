@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router"
 import { useTranslation } from "react-i18next"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
+import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -25,7 +27,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import CreateUserDialog from "@/components/users/CreateUserDialog"
 import ResetPasswordDialog from "@/components/users/ResetPasswordDialog"
-import { useAuth } from "@/contexts/AuthContext"
 import LoadingState from "@/components/ui/loading-state"
 import EmptyState from "@/components/ui/empty-state"
 
@@ -53,7 +54,7 @@ function Users() {
   const openCreateOnLoad = searchParams.get("new") === "1"
   const [page, setPage] = useState(0)
   const [userPendingDeactivation, setUserPendingDeactivation] = useState<UserSummary | null>(null)
-  const [deactivateErrorCode, setDeactivateErrorCode] = useState<string | null>(null)
+  const [deactivateErrorMessage, setDeactivateErrorMessage] = useState<string | null>(null)
   const [userPendingPasswordReset, setUserPendingPasswordReset] = useState<UserSummary | null>(null)
 
   const { data, isLoading, isError } = useQuery({
@@ -71,17 +72,17 @@ function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
       setUserPendingDeactivation(null)
-      setDeactivateErrorCode(null)
+      setDeactivateErrorMessage(null)
     },
-    onError: () => {
-      setDeactivateErrorCode("ACTION_FAILED")
+    onError: (error: unknown) => {
+      setDeactivateErrorMessage(getErrorMessage(error, "errors.ACTION_FAILED"))
     },
   })
 
   function handleOpenChange(open: boolean) {
     if (!open) {
       setUserPendingDeactivation(null)
-      setDeactivateErrorCode(null)
+      setDeactivateErrorMessage(null)
     }
   }
 
@@ -175,9 +176,9 @@ function Users() {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          {deactivateErrorCode && (
+          {deactivateErrorMessage && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {t(`errors.${deactivateErrorCode}`)}
+              {deactivateErrorMessage}
             </div>
           )}
 

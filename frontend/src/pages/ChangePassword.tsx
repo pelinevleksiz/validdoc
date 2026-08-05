@@ -3,9 +3,9 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@tanstack/react-query"
-import axios from "axios"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -28,11 +28,9 @@ const changePasswordSchema = z.object({
 
 type ChangePasswordValues = z.infer<typeof changePasswordSchema>
 
-const KNOWN_ERROR_CODES = ["BAD_CREDENTIALS"]
-
 function ChangePassword() {
   const { t } = useTranslation()
-  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
+  const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
   const form = useForm<ChangePasswordValues>({
@@ -46,18 +44,17 @@ function ChangePassword() {
     },
     onSuccess: () => {
       setSuccess(true)
-      setServerErrorCode(null)
+      setServerErrorMessage(null)
       form.reset()
     },
     onError: (error: unknown) => {
       setSuccess(false)
-      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
-      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
+      setServerErrorMessage(getErrorMessage(error))
     },
   })
 
   function onSubmit(values: ChangePasswordValues) {
-    setServerErrorCode(null)
+    setServerErrorMessage(null)
     setSuccess(false)
     changeMutation.mutate(values)
   }
@@ -69,9 +66,9 @@ function ChangePassword() {
         <CardDescription>{t("changePassword.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {serverErrorCode && (
+        {serverErrorMessage && (
           <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {t(`errors.${serverErrorCode}`)}
+            {serverErrorMessage}
           </div>
         )}
         {success && (

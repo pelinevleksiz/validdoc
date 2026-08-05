@@ -3,9 +3,9 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation } from "@tanstack/react-query"
-import axios from "axios"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -29,8 +29,6 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordValues = z.infer<typeof resetPasswordSchema>
 
-const KNOWN_ERROR_CODES = ["BAD_CREDENTIALS"]
-
 function ResetPasswordDialog({
   userId,
   username,
@@ -43,7 +41,7 @@ function ResetPasswordDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [serverErrorCode, setServerErrorCode] = useState<string | null>(null)
+  const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null)
 
   const form = useForm<ResetPasswordValues>({
     resolver: zodResolver(resetPasswordSchema),
@@ -59,20 +57,19 @@ function ResetPasswordDialog({
       onOpenChange(false)
     },
     onError: (error: unknown) => {
-      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
-      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
+      setServerErrorMessage(getErrorMessage(error))
     },
   })
 
   function onSubmit(values: ResetPasswordValues) {
-    setServerErrorCode(null)
+    setServerErrorMessage(null)
     resetMutation.mutate(values)
   }
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       form.reset()
-      setServerErrorCode(null)
+      setServerErrorMessage(null)
     }
     onOpenChange(next)
   }
@@ -91,9 +88,9 @@ function ResetPasswordDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {serverErrorCode && (
+        {serverErrorMessage && (
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {t(`errors.${serverErrorCode}`)}
+            {serverErrorMessage}
           </div>
         )}
 

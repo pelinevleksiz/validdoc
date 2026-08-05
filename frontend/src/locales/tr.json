@@ -37,11 +37,8 @@
   },
   "errors": {
     "SESSION_EXPIRED": "Oturumunuz sona erdi, lütfen tekrar giriş yapın.",
-    "BAD_CREDENTIALS": "Kullanıcı adı veya şifre hatalı",
-    "TOO_MANY_LOGIN_ATTEMPTS": "Çok fazla başarısız deneme, lütfen bekleyin",
     "GENERIC": "Bir hata oluştu, lütfen tekrar deneyin.",
-    "ACTION_FAILED": "İşlem başarısız oldu.",
-    "DUPLICATE_RECORD": "Bu isimde bir kayıt zaten var."
+    "ACTION_FAILED": "İşlem başarısız oldu."
   },
   "dashboard": {
     "statsToday": "Bugün yüklenen",
@@ -50,9 +47,9 @@
     "statsNoData": "Henüz veri yok",
     "statsLoadError": "İstatistikler yüklenemedi.",
     "shortcutUploadDesc": "Yeni bir belge tara ve doğrula",
-  "shortcutTemplateDesc": "Yeni bir tarama şablonu tanımla",
-  "shortcutUserDesc": "Sisteme yeni bir kullanıcı ekle",
-  "shortcutReviewDesc": "Bekleyen incelemeleri tamamla"
+    "shortcutTemplateDesc": "Yeni bir tarama şablonu tanımla",
+    "shortcutUserDesc": "Sisteme yeni bir kullanıcı ekle",
+    "shortcutReviewDesc": "Bekleyen incelemeleri tamamla"
   },
   "templates": {
     "title": "Şablonlar",
@@ -133,7 +130,16 @@
       "VALIDATION_SETTINGS_UPDATED": "Doğrulama ayarları güncellendi",
       "DOCUMENT_UPLOADED": "Belge yüklendi",
       "RETENTION_PURGE": "Saklama süresi doldu, segment verisi anonimleştirildi",
-      "RETENTION_ABANDONED_REVIEW_EXPIRED": "İnceleme süresi doldu, belge otomatik reddedildi"
+      "RETENTION_ABANDONED_REVIEW_EXPIRED": "İnceleme süresi doldu, belge otomatik reddedildi",
+      "AUTO_VALIDATED": "Otomatik olarak onaylandı",
+      "AUTO_REJECTED_EMPTY": "Otomatik olarak boş belge diye reddedildi",
+      "AUTO_REJECTED_INVALID": "Otomatik olarak geçersiz diye reddedildi",
+      "AUTO_PENDING_REVIEW": "Otomatik olarak incelemeye alındı",
+      "SEGMENT_RESOLVED_FILLED_VALID": "Segment geçerli olarak çözüldü",
+      "SEGMENT_RESOLVED_FILLED_INVALID": "Segment geçersiz olarak çözüldü",
+      "SEGMENT_RESOLVED_EMPTY": "Segment boş olarak çözüldü",
+      "SEGMENT_OVERRIDDEN": "Segment kararına manuel müdahale edildi",
+      "PASSWORD_RESET_BY_ADMIN": "Şifre admin tarafından sıfırlandı"
     }
   },
   "rules": {
@@ -221,7 +227,7 @@
     "failedRules": "Başarısız kurallar: {{rules}}"
   },
   "reviewQueue": {
-    "title": "inceleme Kuyruğu",
+    "title": "İnceleme Kuyruğu",
     "empty": "Bekleyen belge yok.",
     "fileNameHeader": "Dosya adı",
     "actionHeader": "İşlem",

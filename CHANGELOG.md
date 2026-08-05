@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document detail page now shows each segment's cropped image (thumbnail in the list, full view in a side panel on click), colored consistently with the outcome badges used elsewhere.
 - Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
 - Admins can reset another user's password (confirmed by re-entering their own password) without ever viewing the target's current password. The reset user's existing session token remains valid for up to 10 more minutes — a known limitation.
+- Audit log now translates all 16 possible action types (previously 7 of 16 fell back to raw enum names), including segment auto-decisions, manual resolutions, overrides, and admin password resets.
 
 ### Changed
 
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TC_KIMLIK_NO` and `VKN` rules now validate the actual MERNİS/VKN checksum algorithms instead of only checking digit count.
 - All segment crops (including signature/stamp, which previously had none) are now persisted with the automatic decision, not deleted on resolve; text-field crops are compressed to grayscale JPEG, signature/stamp crops keep color. The image endpoint now serves `image/jpeg` instead of `image/png`.
 - Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
+- Consolidated the redundant `messages_tr.properties` file (byte-identical to the default bundle, and incorrectly encoded) into `messages.properties`; fixed several missing-diacritic and inconsistent-punctuation strings along the way.
+- Frontend now displays the backend's own localized error `message` directly instead of maintaining a separate, partially-duplicated translation catalog per page; the shared `getErrorMessage` helper replaces three separate `KNOWN_ERROR_CODES` implementations.
 
 ### Fixed
 

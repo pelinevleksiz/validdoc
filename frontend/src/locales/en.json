@@ -37,11 +37,8 @@
   },
   "errors": {
     "SESSION_EXPIRED": "Your session has expired, please sign in again.",
-    "BAD_CREDENTIALS": "Invalid username or password",
-    "TOO_MANY_LOGIN_ATTEMPTS": "Too many failed attempts, please wait",
     "GENERIC": "An error occurred, please try again.",
-    "ACTION_FAILED": "Action failed.",
-    "DUPLICATE_RECORD": "A record with this name already exists."
+    "ACTION_FAILED": "Action failed."
   },
   "dashboard": {
     "statsToday": "Uploaded today",
@@ -133,7 +130,16 @@
       "VALIDATION_SETTINGS_UPDATED": "Validation settings updated",
       "DOCUMENT_UPLOADED": "Document uploaded",
       "RETENTION_PURGE": "Retention period expired, segment data anonymized",
-      "RETENTION_ABANDONED_REVIEW_EXPIRED": "Review period expired, document auto-rejected"
+      "RETENTION_ABANDONED_REVIEW_EXPIRED": "Review period expired, document auto-rejected",
+      "AUTO_VALIDATED": "Automatically validated",
+      "AUTO_REJECTED_EMPTY": "Automatically rejected as empty",
+      "AUTO_REJECTED_INVALID": "Automatically rejected as invalid",
+      "AUTO_PENDING_REVIEW": "Automatically sent to review",
+      "SEGMENT_RESOLVED_FILLED_VALID": "Segment resolved as valid",
+      "SEGMENT_RESOLVED_FILLED_INVALID": "Segment resolved as invalid",
+      "SEGMENT_RESOLVED_EMPTY": "Segment resolved as empty",
+      "SEGMENT_OVERRIDDEN": "Segment decision manually overridden",
+      "PASSWORD_RESET_BY_ADMIN": "Password reset by admin"
     }
   },
   "rules": {
