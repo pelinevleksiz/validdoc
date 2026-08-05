@@ -28,8 +28,6 @@ public class ValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationService.class);
 
-    private static final Pattern TC_KIMLIK_NO_PATTERN = Pattern.compile("^\\d{11}$");
-    private static final Pattern VKN_PATTERN = Pattern.compile("^\\d{10}$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?\\d{7,15}$");
     private static final Pattern PHONE_SEPARATOR_PATTERN = Pattern.compile("[\\s()\\-./]");
     private static final Pattern EMAIL_PATTERN =
@@ -150,12 +148,47 @@ public class ValidationService {
             case DATE -> isValidDate(text);
             case MIN_LENGTH -> rule.getParam() != null && text.length() >= rule.getParam();
             case MAX_LENGTH -> rule.getParam() != null && text.length() <= rule.getParam();
-            case TC_KIMLIK_NO -> TC_KIMLIK_NO_PATTERN.matcher(text).matches();
-            case VKN -> VKN_PATTERN.matcher(text).matches();
+            case TC_KIMLIK_NO -> isValidTcKimlikNo(text);
+            case VKN -> isValidVkn(text);
             case PHONE -> isValidPhone(text);
             case EMAIL -> EMAIL_PATTERN.matcher(text).matches();
             case SIGNATURE_INK, STAMP_INK -> true;
         };
+    }
+
+    private boolean isValidTcKimlikNo(String text) {
+        if (!text.matches("\\d{11}") || text.charAt(0) == '0') {
+            return false;
+        }
+        int[] d = text.chars().map(c -> c - '0').toArray();
+        int oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
+        int evenSum = d[1] + d[3] + d[5] + d[7];
+        int checkDigit10 = ((oddSum * 7 - evenSum) % 10 + 10) % 10;
+        int firstTenSum = 0;
+        for (int i = 0; i < 10; i++) {
+            firstTenSum += d[i];
+        }
+        int checkDigit11 = firstTenSum % 10;
+        return checkDigit10 == d[9] && checkDigit11 == d[10];
+    }
+
+    private boolean isValidVkn(String text) {
+        if (!text.matches("\\d{10}")) {
+            return false;
+        }
+        int[] d = text.chars().map(c -> c - '0').toArray();
+        int total = 0;
+        for (int i = 0; i < 9; i++) {
+            int weight = 9 - i;
+            int v1 = (d[i] + weight) % 10;
+            int v2 = (v1 * (1 << weight)) % 9;
+            if (v1 != 0 && v2 == 0) {
+                v2 = 9;
+            }
+            total += v2;
+        }
+        int checkDigit = (10 - (total % 10)) % 10;
+        return checkDigit == d[9];
     }
 
     private boolean isValidPhone(String text) {
