@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `template_segments.label` column narrowed to VARCHAR(30) to match the already-enforced DTO validation limit.
 - Phone validation rule (`PHONE_TR` → `PHONE`) now accepts international numbers: separators are stripped and 7-15 digits with an optional leading `+` are required (ITU-T E.164), instead of matching only Turkish mobile format.
 - `TC_KIMLIK_NO` and `VKN` rules now validate the actual MERNİS/VKN checksum algorithms instead of only checking digit count.
+- All segment crops (including signature/stamp, which previously had none) are now persisted with the automatic decision, not deleted on resolve; text-field crops are compressed to grayscale JPEG, signature/stamp crops keep color. The image endpoint now serves `image/jpeg` instead of `image/png`.
 
 ### Fixed
 
