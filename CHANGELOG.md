@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Branching model (`main` / `develop` / `test` / `feature/*` / `release/*`), pull request template and this changelog.
 - Audit logs now record the target user for actions like deactivation.
 - Document detail page now shows each segment's cropped image (thumbnail in the list, full view in a side panel on click), colored consistently with the outcome badges used elsewhere.
+- Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
 
 ### Changed
 
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phone validation rule (`PHONE_TR` → `PHONE`) now accepts international numbers: separators are stripped and 7-15 digits with an optional leading `+` are required (ITU-T E.164), instead of matching only Turkish mobile format.
 - `TC_KIMLIK_NO` and `VKN` rules now validate the actual MERNİS/VKN checksum algorithms instead of only checking digit count.
 - All segment crops (including signature/stamp, which previously had none) are now persisted with the automatic decision, not deleted on resolve; text-field crops are compressed to grayscale JPEG, signature/stamp crops keep color. The image endpoint now serves `image/jpeg` instead of `image/png`.
+- Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
 
 ### Fixed
 
