@@ -115,6 +115,7 @@
     "timeHeader": "Zaman",
     "actionHeader": "İşlem",
     "byHeader": "Yapan",
+    "detailsHeader": "Detay",
     "documentHeader": "Belge",
     "targetUserHeader": "Hedef Kullanıcı",
     "actions": {
@@ -198,6 +199,17 @@
     "page": "Sayfa {{page}}",
     "value": "Değer: {{value}}",
     "noImage": "Görüntü yok",
+    "overrideButton": "Müdahale Et",
+    "overrideConfirmTitle": "Emin misiniz?",
+    "overrideConfirmBody": "Bu segment için karar zaten verilmiş. Manuel müdahale ile değiştirmek istediğinize emin misiniz?",
+    "overrideConfirmYes": "Evet, devam et",
+    "overrideConfirmCancel": "Vazgeç",
+    "overrideOutcomeLabel": "Yeni karar",
+    "overrideReasonOcrMisread": "OCR yanlış tespit etti",
+    "overrideReasonOther": "Diğer",
+    "overrideNotePlaceholder": "Kısa bir açıklama yazın (en fazla 120 karakter)",
+    "overrideSubmit": "Kaydet",
+    "overrideError": "Müdahale kaydedilemedi.",
     "failedRules": "Başarısız kurallar: {{rules}}"
   },
   "reviewQueue": {

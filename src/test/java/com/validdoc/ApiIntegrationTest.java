@@ -1338,4 +1338,149 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PREVIEW_FAILED"));
     }
+
+    @Test
+    @Order(56)
+    void adminCanOverrideResolvedSegmentAndDocumentStatusRecomputes() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentBId + "/override")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\",\"reasonCode\":\"OCR_MISREAD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("VALIDATED"));
+
+        mockMvc.perform(get("/api/admin/audit-logs?size=50")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.action == 'SEGMENT_OVERRIDDEN')]").exists());
+    }
+
+    @Test
+    @Order(57)
+    void operatorCannotOverrideSegment() throws Exception {
+        String freshOperatorUsername = "operator_override_check_" + RUN_ID;
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + freshOperatorUsername + "\",\"password\":\"FreshOpPass1!\",\"role\":\"OPERATOR\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(AUX_LOGIN_REMOTE_ADDR);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + freshOperatorUsername + "\",\"password\":\"FreshOpPass1!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String freshOperatorToken = extractToken(loginResult);
+
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/override")
+                        .header("Authorization", "Bearer " + freshOperatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_INVALID\",\"reasonCode\":\"OCR_MISREAD\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(58)
+    void overridingPendingSegmentIsRejected() throws Exception {
+        MvcResult detailResult = mockMvc.perform(get("/api/templates/" + multiPageTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        Matcher idMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailResult.getResponse().getContentAsString());
+        assertTrue(idMatcher.find(), "Template id bulunamadi");
+        assertTrue(idMatcher.find(), "Segment id bulunamadi");
+        Long pendingSegmentId = Long.valueOf(idMatcher.group(1));
+
+        String requestBody = """
+                {
+                  "name": "Override Pending Test Template %s",
+                  "segments": [
+                    { "label": "BekleyenAlan", "page": 1, "x": 100, "y": 100, "w": 200, "h": 80,
+                      "rules": [ { "type": "LETTERS_ONLY" } ] }
+                  ]
+                }
+                """.formatted(RUN_ID);
+
+        MvcResult templateResult = mockMvc.perform(post("/api/templates")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long stillPendingTemplateId = extractLongField(templateResult, "id");
+
+        MvcResult detailResult2 = mockMvc.perform(get("/api/templates/" + stillPendingTemplateId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        Matcher segmentIdMatcher = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(detailResult2.getResponse().getContentAsString());
+        assertTrue(segmentIdMatcher.find(), "Template id bulunamadi");
+        assertTrue(segmentIdMatcher.find(), "Segment id bulunamadi");
+        Long stillPendingSegmentId = Long.valueOf(segmentIdMatcher.group(1));
+
+        MockMultipartFile stillPendingFile = new MockMultipartFile("file", "still-pending.png", "image/png", generateInkImage(false));
+        MvcResult stillPendingUpload = mockMvc.perform(multipart("/api/documents/upload")
+                        .file(stillPendingFile)
+                        .param("templateId", String.valueOf(stillPendingTemplateId))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        Long stillPendingDocumentId = extractLongField(stillPendingUpload, "id");
+        pollForFinalStatus(stillPendingDocumentId, adminToken);
+
+        SegmentResultEntry stillPendingEntry = new SegmentResultEntry();
+        stillPendingEntry.setSegmentId(stillPendingSegmentId);
+        stillPendingEntry.setLabel("BekleyenAlan");
+        stillPendingEntry.setOutcome(SegmentOutcome.PENDING_REVIEW);
+
+        DocumentMetadata stillPendingDocument = documentRepository.findById(stillPendingDocumentId).orElseThrow();
+        stillPendingDocument.setStatus(DocumentStatus.PENDING_REVIEW);
+        stillPendingDocument.setSegmentResults(jsonMapper.writeValueAsString(List.of(stillPendingEntry)));
+        documentRepository.save(stillPendingDocument);
+
+        mockMvc.perform(post("/api/documents/" + stillPendingDocumentId
+                        + "/segments/" + stillPendingSegmentId + "/override")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_VALID\",\"reasonCode\":\"OCR_MISREAD\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SEGMENT_NOT_YET_RESOLVED"));
+    }
+
+    @Test
+    @Order(59)
+    void overrideWithOtherReasonRequiresNote() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/override")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_INVALID\",\"reasonCode\":\"OTHER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("OVERRIDE_NOTE_REQUIRED"));
+
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/override")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_INVALID\",\"reasonCode\":\"OTHER\",\"note\":\"Belge kalitesi dusuktu\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(60)
+    void overrideWithSameOutcomeIsRejected() throws Exception {
+        mockMvc.perform(post("/api/documents/" + resolveTestDocumentId
+                        + "/segments/" + resolveSegmentAId + "/override")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outcome\":\"FILLED_INVALID\",\"reasonCode\":\"OCR_MISREAD\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("OVERRIDE_OUTCOME_UNCHANGED"));
+    }
 }

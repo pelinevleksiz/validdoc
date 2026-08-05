@@ -20,6 +20,7 @@ interface AuditLogEntry {
   action: string
   performedBy: string
   targetUserId: number | null
+  details: string | null
   timestamp: string
 }
 
@@ -70,6 +71,7 @@ function AuditLog() {
                 <TableHead>{t("auditLog.byHeader")}</TableHead>
                 <TableHead>{t("auditLog.documentHeader")}</TableHead>
                 <TableHead>{t("auditLog.targetUserHeader")}</TableHead>
+                <TableHead>{t("auditLog.detailsHeader")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -82,6 +84,7 @@ function AuditLog() {
                   <TableCell>{entry.performedBy}</TableCell>
                   <TableCell>{entry.documentId ?? "—"}</TableCell>
                   <TableCell>{entry.targetUserId ?? "—"}</TableCell>
+                  <TableCell className="max-w-xs truncate text-sm text-muted-foreground">{entry.details ?? "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { useParams } from "react-router"
 import { useTranslation } from "react-i18next"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/AuthContext"
+import { Button } from "@/components/ui/button"
 import {
   Sheet,
   SheetContent,
@@ -49,6 +51,11 @@ const OUTCOME_COLORS: Record<string, string> = {
   EMPTY: "bg-muted text-muted-foreground",
   PENDING_REVIEW: "bg-orange-500/10 text-orange-600",
 }
+
+const OVERRIDE_OUTCOME_OPTIONS = ["FILLED_VALID", "FILLED_INVALID", "EMPTY"] as const
+type OverrideOutcome = (typeof OVERRIDE_OUTCOME_OPTIONS)[number]
+type OverrideReason = "OCR_MISREAD" | "OTHER"
+type OverrideStep = "idle" | "confirm" | "form"
 
 function useSegmentImage(documentId: number, segmentId: number) {
   return useQuery({
@@ -124,9 +131,135 @@ function SegmentImageFull({ documentId, segmentId }: { documentId: number; segme
   )
 }
 
+function OverrideSection({
+  documentId,
+  segment,
+  onDone,
+}: {
+  documentId: number
+  segment: SegmentResult
+  onDone: () => void
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [step, setStep] = useState<OverrideStep>("idle")
+  const [outcome, setOutcome] = useState<OverrideOutcome>(segment.outcome as OverrideOutcome)
+  const [reasonCode, setReasonCode] = useState<OverrideReason>("OCR_MISREAD")
+  const [note, setNote] = useState("")
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/api/documents/${documentId}/segments/${segment.segmentId}/override`, {
+        outcome,
+        reasonCode,
+        note: reasonCode === "OTHER" ? note : undefined,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["document", String(documentId)] })
+      setStep("idle")
+      setNote("")
+      onDone()
+    },
+  })
+
+  const unchanged = outcome === segment.outcome
+
+  if (step === "idle") {
+    return (
+      <Button variant="destructive" size="sm" onClick={() => setStep("confirm")}>
+        {t("documents.overrideButton")}
+      </Button>
+    )
+  }
+
+  if (step === "confirm") {
+    return (
+      <div className="rounded-md border p-3">
+        <p className="text-sm font-medium">{t("documents.overrideConfirmTitle")}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t("documents.overrideConfirmBody")}</p>
+        <div className="mt-3 flex gap-2">
+          <Button size="sm" variant="destructive" onClick={() => setStep("form")}>
+            {t("documents.overrideConfirmYes")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setStep("idle")}>
+            {t("documents.overrideConfirmCancel")}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border p-3">
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">{t("documents.overrideOutcomeLabel")}</label>
+        <select
+          value={outcome}
+          onChange={(e) => setOutcome(e.target.value as OverrideOutcome)}
+          className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+        >
+          {OVERRIDE_OUTCOME_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {t(`segmentOutcome.${option}`, option)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-0.5">
+        {(["OCR_MISREAD", "OTHER"] as const).map((option) => (
+          <label
+            key={option}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            <input
+              type="radio"
+              name="override-reason"
+              value={option}
+              checked={reasonCode === option}
+              onChange={() => setReasonCode(option)}
+              className="h-4 w-4 accent-foreground"
+            />
+            {option === "OCR_MISREAD" ? t("documents.overrideReasonOcrMisread") : t("documents.overrideReasonOther")}
+          </label>
+        ))}
+      </div>
+
+      {reasonCode === "OTHER" && (
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value.slice(0, 120))}
+          placeholder={t("documents.overrideNotePlaceholder")}
+          maxLength={120}
+          rows={2}
+          className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+        />
+      )}
+
+      {mutation.isError && <p className="text-xs text-destructive">{t("documents.overrideError")}</p>}
+
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || unchanged || (reasonCode === "OTHER" && note.trim().length === 0)}
+        >
+          {t("documents.overrideSubmit")}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setStep("idle")}>
+          {t("documents.overrideConfirmCancel")}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function DocumentDetail() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
+  const { role } = useAuth()
   const [selectedSegment, setSelectedSegment] = useState<SegmentResult | null>(null)
 
   const { data: document, isLoading: documentLoading } = useQuery({
@@ -257,8 +390,15 @@ function DocumentDetail() {
                   </SheetDescription>
                 )}
               </SheetHeader>
-              <div className="px-4 pb-4">
+              <div className="flex flex-col gap-3 px-4 pb-4">
                 <SegmentImageFull documentId={document.id} segmentId={selectedSegment.segmentId} />
+                {role === "ADMIN" && selectedSegment.outcome !== "PENDING_REVIEW" && (
+                  <OverrideSection
+                    documentId={document.id}
+                    segment={selectedSegment}
+                    onDone={() => setSelectedSegment(null)}
+                  />
+                )}
               </div>
             </>
           )}

@@ -23,6 +23,7 @@ import com.validdoc.repository.DocumentRepository;
 import com.validdoc.repository.SegmentImageRepository;
 import com.validdoc.repository.TemplateRepository;
 import com.validdoc.repository.UserRepository;
+import com.validdoc.model.enums.OverrideReason;
 import jakarta.persistence.EntityNotFoundException;
 import net.sourceforge.tess4j.TesseractException;
 import org.slf4j.Logger;
@@ -192,6 +193,62 @@ public class DocumentService {
         document.setSegmentResults(serializeEntries(entries));
         documentRepository.save(document);
         auditLogRepository.save(new AuditLog(documentId, "SEGMENT_RESOLVED_" + finalOutcome.name(), resolvedBy));
+
+        return document;
+    }
+
+    @Transactional
+    public DocumentMetadata overrideSegment(Long documentId, Long segmentId, SegmentOutcome newOutcome,
+                                            OverrideReason reasonCode, String note, String performedBy) {
+        if (newOutcome == SegmentOutcome.PENDING_REVIEW) {
+            throw new ApiException(ErrorCode.INVALID_SEGMENT_RESOLUTION_OUTCOME);
+        }
+        if (reasonCode == OverrideReason.OTHER && (note == null || note.isBlank())) {
+            throw new ApiException(ErrorCode.OVERRIDE_NOTE_REQUIRED);
+        }
+
+        DocumentMetadata document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ApiException(ErrorCode.DOCUMENT_NOT_FOUND, String.valueOf(documentId)));
+
+        if (document.getSegmentResults() == null) {
+            throw new ApiException(ErrorCode.SEGMENT_NOT_FOUND, String.valueOf(segmentId));
+        }
+
+        List<SegmentResultEntry> entries = parseSegmentResults(document.getSegmentResults());
+
+        SegmentResultEntry target = entries.stream()
+                .filter(e -> segmentId.equals(e.getSegmentId()))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_NOT_FOUND, String.valueOf(segmentId)));
+
+        if (target.getOutcome() == SegmentOutcome.PENDING_REVIEW) {
+            throw new ApiException(ErrorCode.SEGMENT_NOT_YET_RESOLVED, String.valueOf(segmentId));
+        }
+        if (target.getOutcome() == newOutcome) {
+            throw new ApiException(ErrorCode.OVERRIDE_OUTCOME_UNCHANGED);
+        }
+
+        SegmentOutcome previousOutcome = target.getOutcome();
+        target.setOutcome(newOutcome);
+        target.setManuallyResolved(true);
+        target.setResolvedBy(performedBy);
+        target.setResolvedAt(Instant.now());
+
+        boolean anyStillPending = entries.stream().anyMatch(e -> e.getOutcome() == SegmentOutcome.PENDING_REVIEW);
+        if (!anyStillPending) {
+            DocumentStatus recomputed = validationService.deriveStatus(entries);
+            document.setStatus(recomputed);
+            document.setOperator(userRepository.findByUsername(performedBy).orElse(null));
+            document.setProcessedAt(Instant.now());
+            document.setPurgeAt(document.getProcessedAt().plus(validationSettingsService.getRetentionDays(), ChronoUnit.DAYS));
+        }
+
+        document.setSegmentResults(serializeEntries(entries));
+        documentRepository.save(document);
+
+        String details = "segment=" + segmentId + " " + previousOutcome + " -> " + newOutcome
+                + "; reasonCode=" + reasonCode + (note != null && !note.isBlank() ? "; note=" + note : "");
+        auditLogRepository.save(new AuditLog(documentId, "SEGMENT_OVERRIDDEN", performedBy, details));
 
         return document;
     }
