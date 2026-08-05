@@ -7,6 +7,7 @@ import { useNavigate } from "react-router"
 import axios from "axios"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,16 +38,14 @@ interface LoginResponse {
   role: string
 }
 
-const KNOWN_ERROR_CODES = ["BAD_CREDENTIALS", "TOO_MANY_LOGIN_ATTEMPTS"]
-
 function Login() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
-  const [serverErrorCode, setServerErrorCode] = useState<string | null>(() => {
+  const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get("expired") === "1" ? "SESSION_EXPIRED" : null
+    return params.get("expired") === "1" ? t("errors.SESSION_EXPIRED") : null
   })
   const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState<number | null>(null)
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
@@ -55,7 +54,7 @@ function Login() {
     if (rateLimitSecondsLeft === null) return
     if (rateLimitSecondsLeft <= 0) {
       setRateLimitSecondsLeft(null)
-      setServerErrorCode(null)
+      setServerErrorMessage(null)
       return
     }
     const timeout = setTimeout(() => {
@@ -88,13 +87,12 @@ function Login() {
         setRemainingAttempts(typeof remaining === "number" ? remaining : null)
       }
 
-      const code = axios.isAxiosError(error) ? error.response?.data?.code : null
-      setServerErrorCode(code && KNOWN_ERROR_CODES.includes(code) ? code : "GENERIC")
+      setServerErrorMessage(getErrorMessage(error))
     },
   })
 
   function onSubmit(values: LoginFormValues) {
-    setServerErrorCode(null)
+    setServerErrorMessage(null)
     loginMutation.mutate(values)
   }
 
@@ -113,9 +111,9 @@ function Login() {
           <CardDescription>{t("login.description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          {serverErrorCode && (
+          {serverErrorMessage && (
             <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {t(`errors.${serverErrorCode}`)}
+              {serverErrorMessage}
               {showRemainingAttemptsWarning && (
                 <div className="mt-1 text-xs">
                   {t("login.remainingAttempts")}: {remainingAttempts}
