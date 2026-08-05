@@ -26,6 +26,7 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -155,7 +156,10 @@ public class DocumentController {
                 .orElseThrow(() -> new ApiException(ErrorCode.SEGMENT_IMAGE_NOT_FOUND, String.valueOf(segmentId)));
 
         byte[] imageBytes = Base64.getDecoder().decode(image.getImageDataBase64());
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(imageBytes);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.IMAGE_JPEG)
+                .body(imageBytes);
     }
 
     @PostMapping("/{id}/segments/{segmentId}/resolve")

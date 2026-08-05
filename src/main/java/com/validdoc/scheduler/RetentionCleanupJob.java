@@ -48,6 +48,7 @@ public class RetentionCleanupJob {
         for (DocumentMetadata document : expired) {
             document.setSegmentResults(null);
             documentRepository.save(document);
+            segmentImageRepository.deleteByDocumentId(document.getId());
             auditLogRepository.save(new AuditLog(document.getId(), RETENTION_PURGE_ACTION, "SYSTEM"));
         }
 

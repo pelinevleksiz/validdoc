@@ -2,9 +2,7 @@ package com.validdoc;
 
 import com.validdoc.config.DocumentGeometry;
 import com.validdoc.dto.internal.SegmentResultEntry;
-import com.validdoc.model.DocumentMetadata;
-import com.validdoc.model.Template;
-import com.validdoc.model.User;
+import com.validdoc.model.*;
 import com.validdoc.model.enums.DocumentStatus;
 import com.validdoc.model.enums.SegmentOutcome;
 import com.validdoc.model.enums.UserRole;
@@ -43,12 +41,10 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import com.validdoc.model.TemplateSegment;
-import com.validdoc.model.SegmentRule;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -988,11 +984,21 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         expired = documentRepository.save(expired);
         Long expiredDocumentId = expired.getId();
 
+        SegmentImage staleImage = new SegmentImage();
+        staleImage.setDocumentId(expiredDocumentId);
+        staleImage.setSegmentId(resolveSegmentAId);
+        staleImage.setImageDataBase64(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}));
+        staleImage.setCreatedAt(Instant.now());
+        segmentImageRepository.save(staleImage);
+
         retentionCleanupJob.purgeExpiredSegmentResults();
 
         DocumentMetadata reloaded = documentRepository.findById(expiredDocumentId).orElseThrow();
         assertNull(reloaded.getSegmentResults());
+        assertTrue(segmentImageRepository.findByDocumentId(expiredDocumentId).isEmpty(),
+                "Retention purge sonrasi segment goruntuleri de silinmis olmali");
     }
+
 
     @Test
     @Order(46)
