@@ -54,7 +54,7 @@ public final class AccuracyCampaignRunner {
     private record SegmentExpectation(String label, String ruleType, String writtenValue, String expectedOutcome) {}
 
     private record SegmentComparison(String label, String expectedOutcome, String actualOutcome, String verdict,
-                                     Double ocrConfidence, String pendingReason) {}
+                                     Double ocrConfidence, String pendingReason, String actualExtractedText) {}
 
     private record DocumentResult(DocumentExpectation expectation, String actualDocumentStatus,
                                   String documentVerdict, List<SegmentComparison> segments) {}
@@ -157,14 +157,6 @@ public final class AccuracyCampaignRunner {
         return fallbackDefault;
     }
 
-    /**
-     * Her sablon klasoru icin template.json'i gercek POST /api/templates ile olusturur.
-     * Donen haritanin anahtari: KLASOR ADI (sanitize edilmis, orn. "kimlik-formu") —
-     * bu, hem template.json'in hem manifest.csv'nin geldigi ortak, degismeyen kimlik.
-     * template.json'daki "name" alani "(sentetik)" ekiyle bitiyor, manifest.csv'deki
-     * templateName sutunu ise eksiz duz isim — ikisi de birbiriyle DOGRUDAN eslesmiyor,
-     * bu yuzden klasor adi ortak referans noktasi olarak kullaniliyor.
-     */
     private Map<String, Long> createAllTemplates() throws IOException, InterruptedException {
         Map<String, Long> result = new LinkedHashMap<>();
         if (!Files.isDirectory(SYNTHETIC_ROOT)) {
@@ -331,6 +323,7 @@ public final class AccuracyCampaignRunner {
             JsonNode segmentNode = segmentNodeByLabel.get(segmentExpectation.label());
             Double ocrConfidence = null;
             String pendingReason = null;
+            String extractedText = null;
             if (segmentNode != null) {
                 JsonNode confidenceNode = segmentNode.get("ocrConfidence");
                 if (confidenceNode != null && !confidenceNode.isNull()) {
@@ -340,11 +333,16 @@ public final class AccuracyCampaignRunner {
                 if (reasonNode != null && !reasonNode.isNull()) {
                     pendingReason = reasonNode.asText();
                 }
+                JsonNode maskedValueNode = segmentNode.get("maskedValue");
+                if (maskedValueNode != null && !maskedValueNode.isNull()) {
+                    extractedText = maskedValueNode.asText();
+                }
             }
 
             comparisons.add(new SegmentComparison(segmentExpectation.label(), segmentExpectation.expectedOutcome(),
-                    actualOutcome, verdict, ocrConfidence, pendingReason));
+                    actualOutcome, verdict, ocrConfidence, pendingReason, extractedText));
         }
+
         String documentVerdict = verdictFor(expectation.expectedDocumentStatus(), actualStatus);
         return new DocumentResult(expectation, actualStatus, documentVerdict, comparisons);
     }
@@ -448,16 +446,22 @@ public final class AccuracyCampaignRunner {
     private void writeResultsCsv(List<DocumentResult> results) throws IOException {
         try (Writer writer = Files.newBufferedWriter(RESULTS_ROOT.resolve("campaign-results.csv"), StandardCharsets.UTF_8)) {
             writer.write("templateName,variant,quality,fileName,expectedDocumentStatus,actualDocumentStatus,documentVerdict,"
-                    + "segmentLabel,expectedSegmentOutcome,actualSegmentOutcome,segmentVerdict,ocrConfidence,pendingReason\n");
+                    + "segmentLabel,expectedSegmentOutcome,actualSegmentOutcome,segmentVerdict,ocrConfidence,pendingReason,writtenValue,actualExtractedText\n");
             for (DocumentResult result : results) {
                 DocumentExpectation e = result.expectation();
+                Map<String, String> writtenValueByLabel = new LinkedHashMap<>();
+                for (SegmentExpectation exp : e.segments()) {
+                    writtenValueByLabel.put(exp.label(), exp.writtenValue());
+                }
                 for (SegmentComparison segment : result.segments()) {
                     writer.write(String.join(",", csvSafe(e.templateName()), csvSafe(e.variant()), csvSafe(e.quality()),
                             csvSafe(e.fileName()), csvSafe(e.expectedDocumentStatus()), csvSafe(result.actualDocumentStatus()),
                             csvSafe(result.documentVerdict()), csvSafe(segment.label()), csvSafe(segment.expectedOutcome()),
                             csvSafe(segment.actualOutcome()), csvSafe(segment.verdict()),
                             csvSafe(segment.ocrConfidence() == null ? "" : String.valueOf(segment.ocrConfidence())),
-                            csvSafe(segment.pendingReason())));
+                            csvSafe(segment.pendingReason()),
+                            csvSafe(writtenValueByLabel.get(segment.label())),
+                            csvSafe(segment.actualExtractedText())));
                     writer.write("\n");
                 }
             }
@@ -540,19 +544,6 @@ public final class AccuracyCampaignRunner {
         Files.writeString(RESULTS_ROOT.resolve("campaign-summary.md"), report.toString(), StandardCharsets.UTF_8);
     }
 
-    private String bucketReason(String rawReason) {
-        if (rawReason == null) {
-            return "(sebep kaydedilmemis / ink segment)";
-        }
-        if (rawReason.contains("düşük güvenle") || rawReason.contains("dusuk guvenle")) {
-            return "OCR dusuk guvenle okudu";
-        }
-        if (rawReason.contains("görünür içerik") || rawReason.contains("gorunur icerik")) {
-            return "Metin okunamadi ama gorunur icerik var";
-        }
-        return "Diger: " + rawReason;
-    }
-
     private void incrementVerdict(int[] counts, String verdict) {
         switch (verdict) {
             case "MATCH" -> counts[0]++;
@@ -570,5 +561,18 @@ public final class AccuracyCampaignRunner {
             report.append(String.format("| %s | %d | %d | %d | %d | %.1f%% |%n",
                     entry.getKey(), counts[0], counts[1], counts[2], total, matchPct));
         }
+    }
+
+    private String bucketReason(String rawReason) {
+        if (rawReason == null) {
+            return "(sebep kaydedilmemis / ink segment)";
+        }
+        if (rawReason.contains("düşük güvenle") || rawReason.contains("dusuk guvenle")) {
+            return "OCR dusuk guvenle okudu";
+        }
+        if (rawReason.contains("görünür içerik") || rawReason.contains("gorunur icerik")) {
+            return "Metin okunamadi ama gorunur icerik var";
+        }
+        return "Diger: " + rawReason;
     }
 }

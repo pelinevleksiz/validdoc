@@ -43,6 +43,31 @@ public final class ImageProcessingUtil {
         }
     }
 
+    private static final int OCR_BORDER_PX = 15;
+
+    public static BufferedImage binarizeForOcr(BufferedImage region) {
+        Mat mat = bufferedImageToMat(region);
+        Mat gray = new Mat();
+        Mat binary = new Mat();
+        Mat bordered = new Mat();
+        try {
+            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_BGR2GRAY);
+            Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU);
+            org.opencv.core.Core.copyMakeBorder(binary, bordered,
+                    OCR_BORDER_PX, OCR_BORDER_PX, OCR_BORDER_PX, OCR_BORDER_PX,
+                    org.opencv.core.Core.BORDER_CONSTANT, new org.opencv.core.Scalar(255));
+            BufferedImage result = new BufferedImage(bordered.cols(), bordered.rows(), BufferedImage.TYPE_BYTE_GRAY);
+            byte[] data = new byte[bordered.cols() * bordered.rows()];
+            bordered.get(0, 0, data);
+            result.getRaster().setDataElements(0, 0, bordered.cols(), bordered.rows(), data);
+            return result;
+        } finally {
+            mat.release();
+            gray.release();
+            binary.release();
+            bordered.release();
+        }
+    }
     public static Mat bufferedImageToMat(BufferedImage bi) {
         BufferedImage normalized = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
         normalized.getGraphics().drawImage(bi, 0, 0, null);

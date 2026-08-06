@@ -17,13 +17,22 @@ import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -67,7 +76,7 @@ public class OcrService {
                 byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
                 readings.add(new SegmentReading(segment, null, density, null, croppedImage));
             } else {
-                OcrExtraction extraction = runOcr(tesseract, region, segment.getLabel());
+                OcrExtraction extraction = runOcr(tesseract, region, segment);
                 byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
                 Double pixelDensity = extraction.text().isEmpty() ? ImageProcessingUtil.computeInkDensity(region) : null;
                 readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImage));
@@ -78,18 +87,42 @@ public class OcrService {
 
     private record OcrExtraction(String text, Double confidence) {}
 
-    private OcrExtraction runOcr(Tesseract tesseract, BufferedImage region, String segmentLabel) {
+    private OcrExtraction runOcr(Tesseract tesseract, BufferedImage region, TemplateSegment segment) {
         try {
-            List<Word> words = tesseract.getWords(region, ITessAPI.TessPageIteratorLevel.RIL_WORD);
-            String text = words.stream().map(Word::getText).collect(Collectors.joining(" ")).trim();
+            BufferedImage binarized = ImageProcessingUtil.binarizeForOcr(region);
+            List<Word> words = tesseract.getWords(binarized, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+            String rawText = words.stream().map(Word::getText).collect(Collectors.joining(" ")).trim();
+            String text = applyKnownOcrCorrections(rawText, segment);
             Double confidence = words.isEmpty() ? null : words.stream()
                     .mapToDouble(Word::getConfidence)
                     .average()
                     .orElse(0.0);
             return new OcrExtraction(text, confidence);
         } catch (Throwable t) {
-            throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segmentLabel, t);
+            throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segment.getLabel(), t);
         }
+    }
+
+    private static final Pattern PHONE_LEADING_T_MISREAD = Pattern.compile("^t(\\d[\\d\\s()\\-./]*)$");
+    private static final Pattern EMAIL_MD_AS_AT_MISREAD = Pattern.compile("^([\\w.+-]+)MD([\\w-]+\\.[a-zA-Z]{2,})$");
+
+    private String applyKnownOcrCorrections(String text, TemplateSegment segment) {
+        boolean isPhone = segment.getRules().stream().anyMatch(r -> r.getRuleType() == SegmentRuleType.PHONE);
+        boolean isEmail = segment.getRules().stream().anyMatch(r -> r.getRuleType() == SegmentRuleType.EMAIL);
+
+        if (isPhone) {
+            Matcher matcher = PHONE_LEADING_T_MISREAD.matcher(text);
+            if (matcher.matches()) {
+                return "+" + matcher.group(1);
+            }
+        }
+        if (isEmail && !text.contains("@")) {
+            Matcher matcher = EMAIL_MD_AS_AT_MISREAD.matcher(text);
+            if (matcher.matches()) {
+                return matcher.group(1) + "@" + matcher.group(2);
+            }
+        }
+        return text;
     }
 
     private static final int MAX_STORAGE_WIDTH_PX = 1000;
@@ -108,7 +141,7 @@ public class OcrService {
 
     private BufferedImage toGrayscale(BufferedImage source) {
         BufferedImage gray = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-        java.awt.Graphics2D g = gray.createGraphics();
+        Graphics2D g = gray.createGraphics();
         g.drawImage(source, 0, 0, null);
         g.dispose();
         return gray;
@@ -120,8 +153,8 @@ public class OcrService {
         }
         int targetHeight = (int) ((double) source.getHeight() * maxWidth / source.getWidth());
         BufferedImage scaled = new BufferedImage(maxWidth, targetHeight, source.getType());
-        java.awt.Graphics2D g = scaled.createGraphics();
-        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        Graphics2D g = scaled.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(source, 0, 0, maxWidth, targetHeight, null);
         g.dispose();
         return scaled;
@@ -129,14 +162,14 @@ public class OcrService {
 
     private byte[] writeJpeg(BufferedImage image, float quality) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        java.util.Iterator<javax.imageio.ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        javax.imageio.ImageWriter writer = writers.next();
-        javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
-        param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        ImageWriter writer = writers.next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
         param.setCompressionQuality(quality);
-        try (javax.imageio.stream.ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
             writer.setOutput(ios);
-            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+            writer.write(null, new IIOImage(image, null, null), param);
         } finally {
             writer.dispose();
         }
