@@ -76,8 +76,9 @@ public class ValidationService {
                     }
                 } else {
                     List<String> failedRules = evaluateTextRules(segment, text);
-                    boolean lowConfidence = reading.getOcrConfidence() != null
-                            && reading.getOcrConfidence() < settings.getOcrConfidenceThreshold();
+                    Double effectiveConfidence = adjustConfidenceForRuleCompliance(reading.getOcrConfidence(), failedRules);
+                    boolean lowConfidence = effectiveConfidence != null
+                            && effectiveConfidence < settings.getOcrConfidenceThreshold();
 
                     if (lowConfidence) {
                         entry.setOutcome(SegmentOutcome.PENDING_REVIEW);
@@ -94,8 +95,8 @@ public class ValidationService {
                     }
 
                     entry.setMaskedValue(maskValue(segment, text));
-                    if (reading.getOcrConfidence() != null) {
-                        entry.setOcrConfidence(Math.round(reading.getOcrConfidence() * 10.0) / 10.0);
+                    if (effectiveConfidence != null) {
+                        entry.setOcrConfidence(Math.round(effectiveConfidence * 10.0) / 10.0);
                     }
                 }
             }
@@ -128,6 +129,15 @@ public class ValidationService {
             return DocumentStatus.VALIDATED;
         }
         return DocumentStatus.REJECTED_INVALID;
+    }
+
+    private static final double RULE_COMPLIANCE_CONFIDENCE_BONUS = 15.0;
+
+    private Double adjustConfidenceForRuleCompliance(Double rawConfidence, List<String> failedRules) {
+        if (rawConfidence == null || !failedRules.isEmpty()) {
+            return rawConfidence;
+        }
+        return Math.min(100.0, rawConfidence + RULE_COMPLIANCE_CONFIDENCE_BONUS);
     }
 
     private List<String> evaluateTextRules(TemplateSegment segment, String text) {

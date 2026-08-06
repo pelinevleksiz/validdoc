@@ -147,7 +147,8 @@ public final class SyntheticDocumentGenerator {
 
             boolean segmentIsValid = switch (variant) {
                 case ALL_VALID -> true;
-                case ALL_INVALID, ALL_EMPTY -> false;
+                case ALL_INVALID -> false;
+                case ALL_EMPTY -> false;
                 case MIXED -> segmentIndex % 2 == 0;
             };
 
@@ -195,6 +196,33 @@ public final class SyntheticDocumentGenerator {
         }
     }
 
+    private static final String[] SAMPLE_WORDS = {
+            "belge", "kayit", "bilgi", "aciklama", "onemli", "durum", "kontrol", "sonuc", "rapor", "detay"
+    };
+
+    private String buildWordsOfMinLength(int minLength) {
+        StringBuilder sb = new StringBuilder();
+        int wordIndex = 0;
+        while (sb.length() < minLength) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(SAMPLE_WORDS[wordIndex % SAMPLE_WORDS.length]);
+            wordIndex++;
+        }
+        return sb.toString();
+    }
+
+    private String buildWordsUpToMaxLength(int maxLength) {
+        String full = buildWordsOfMinLength(maxLength + 20);
+        if (full.length() <= maxLength) {
+            return full;
+        }
+        String truncated = full.substring(0, maxLength);
+        int lastSpace = truncated.lastIndexOf(' ');
+        return lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+    }
+
     private RuleValues ruleValues(String ruleType, Integer param) {
         return switch (ruleType) {
             case "LETTERS_ONLY" -> new RuleValues("Mehmet Yilmaz", "Mehmet123");
@@ -206,12 +234,12 @@ public final class SyntheticDocumentGenerator {
             case "PHONE" -> new RuleValues("+905321234567", "123");
             case "EMAIL" -> new RuleValues("test@example.com", "not-an-email");
             case "MIN_LENGTH" -> new RuleValues(
-                    "x".repeat(param + 5),
-                    param > 0 ? "x".repeat(param - 1) : ""
+                    buildWordsOfMinLength(param + 10),
+                    buildWordsUpToMaxLength(Math.max(1, param - 1))
             );
             case "MAX_LENGTH" -> new RuleValues(
-                    "x".repeat(param),
-                    "x".repeat(param + 5)
+                    buildWordsUpToMaxLength(param),
+                    buildWordsOfMinLength(param + 10)
             );
             default -> throw new IllegalArgumentException("Bilinmeyen kural: " + ruleType);
         };

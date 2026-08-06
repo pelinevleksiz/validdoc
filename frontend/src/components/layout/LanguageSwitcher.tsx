@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { setLanguage, type Language } from "@/lib/language"
 
 interface LanguageSwitcherProps {
@@ -31,17 +30,17 @@ function LanguageSwitcher({ variant = "desktop" }: LanguageSwitcherProps) {
   return (
     <div className="flex items-center gap-1 text-sm">
       <Button
-        variant="outline"
+        variant={language === "tr" ? "default" : "outline"}
         size="sm"
-        className={cn("h-8 w-8 px-0", language === "tr" ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}
+        className="h-8 w-8 px-0"
         onClick={() => handleChange("tr")}
       >
         TR
       </Button>
       <Button
-        variant="outline"
+        variant={language === "en" ? "default" : "outline"}
         size="sm"
-        className={cn("h-8 w-8 px-0", language === "en" ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}
+        className="h-8 w-8 px-0"
         onClick={() => handleChange("en")}
       >
         EN

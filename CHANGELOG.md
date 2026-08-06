@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Admins can override an already-resolved segment's outcome (with a required reason — OCR misread or a short custom note), recomputing the document's status; every override is recorded in the audit log with full before/after detail. Document detail now shows a confirmation step and form for this, gated to admins.
 - Consolidated the redundant `messages_tr.properties` file (byte-identical to the default bundle, and incorrectly encoded) into `messages.properties`; fixed several missing-diacritic and inconsistent-punctuation strings along the way.
 - Frontend now displays the backend's own localized error `message` directly instead of maintaining a separate, partially-duplicated translation catalog per page; the shared `getErrorMessage` helper replaces three separate `KNOWN_ERROR_CODES` implementations.
+- Improved OCR accuracy: image binarization and border padding before Tesseract, targeted post-processing correction for common phone/email misreads, and a confidence adjustment for OCR output that already satisfies its segment's validation rule. Measured segment-level accuracy on the synthetic campaign: clean 81.5%→90.2%, medium 38.0%→51.1%, bad 26.1%→43.5%.
 
 ### Fixed
 
