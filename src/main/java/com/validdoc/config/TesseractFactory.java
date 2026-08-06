@@ -1,5 +1,6 @@
 package com.validdoc.config;
 
+import net.sourceforge.tess4j.ITessAPI;
 import net.sourceforge.tess4j.Tesseract;
 
 public class TesseractFactory {
@@ -13,6 +14,7 @@ public class TesseractFactory {
     public Tesseract create() {
         Tesseract tesseract = new Tesseract();
         tesseract.setDatapath(tessDataPath);
+        tesseract.setPageSegMode(ITessAPI.TessPageSegMode.PSM_SINGLE_BLOCK);
         return tesseract;
     }
 }

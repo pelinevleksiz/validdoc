@@ -17,18 +17,11 @@ import com.validdoc.model.TemplateSegment;
 import com.validdoc.model.enums.DocumentLanguage;
 import com.validdoc.model.enums.SegmentRuleType;
 
-import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
-import javax.imageio.ImageWriteParam;
-import javax.imageio.ImageWriter;
-import javax.imageio.stream.ImageOutputStream;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -37,8 +30,6 @@ import java.util.stream.Collectors;
 public class OcrService {
 
     private static final Logger log = LoggerFactory.getLogger(OcrService.class);
-    private static final int MAX_STORAGE_WIDTH_PX = 1000;
-    private static final float JPEG_QUALITY = 0.75f;
 
     private final ThreadLocal<Tesseract> tesseractHolder;
 
@@ -101,6 +92,9 @@ public class OcrService {
         }
     }
 
+    private static final int MAX_STORAGE_WIDTH_PX = 1000;
+    private static final float JPEG_QUALITY = 0.75f;
+
     private byte[] encodeForStorage(BufferedImage region, boolean preserveColor, String segmentLabel) {
         try {
             BufferedImage prepared = preserveColor ? region : toGrayscale(region);
@@ -114,7 +108,7 @@ public class OcrService {
 
     private BufferedImage toGrayscale(BufferedImage source) {
         BufferedImage gray = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-        Graphics2D g = gray.createGraphics();
+        java.awt.Graphics2D g = gray.createGraphics();
         g.drawImage(source, 0, 0, null);
         g.dispose();
         return gray;
@@ -126,8 +120,8 @@ public class OcrService {
         }
         int targetHeight = (int) ((double) source.getHeight() * maxWidth / source.getWidth());
         BufferedImage scaled = new BufferedImage(maxWidth, targetHeight, source.getType());
-        Graphics2D g = scaled.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        java.awt.Graphics2D g = scaled.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(source, 0, 0, maxWidth, targetHeight, null);
         g.dispose();
         return scaled;
@@ -135,14 +129,14 @@ public class OcrService {
 
     private byte[] writeJpeg(BufferedImage image, float quality) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        ImageWriter writer = writers.next();
-        ImageWriteParam param = writer.getDefaultWriteParam();
-        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+        java.util.Iterator<javax.imageio.ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        javax.imageio.ImageWriter writer = writers.next();
+        javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
         param.setCompressionQuality(quality);
-        try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+        try (javax.imageio.stream.ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
             writer.setOutput(ios);
-            writer.write(null, new IIOImage(image, null, null), param);
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
         } finally {
             writer.dispose();
         }
