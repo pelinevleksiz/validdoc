@@ -227,7 +227,7 @@
     "failedRules": "Başarısız kurallar: {{rules}}"
   },
   "reviewQueue": {
-    "title": "İnceleme Kuyruğu",
+    "title": "inceleme Kuyruğu",
     "empty": "Bekleyen belge yok.",
     "fileNameHeader": "Dosya adı",
     "actionHeader": "İşlem",

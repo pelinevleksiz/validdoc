@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audit log now translates all 16 possible action types (previously 7 of 16 fell back to raw enum names), including segment auto-decisions, manual resolutions, overrides, and admin password resets.
 - Test coverage for the TC Kimlik No / VKN checksum algorithms, the generalized phone rule, ink segment image persistence, and `USER_DEACTIVATED` audit log accuracy (backend); a full `DocumentDetail` test suite covering the segment gallery, admin-only override visibility, and the override submission flow (frontend).
 - Synthetic test document generator (`SyntheticDocumentGenerator`, run manually via `main()`) producing 4 templates × 4 fill variants × 3 degradation levels — degraded levels simulate handwriting (system handwriting fonts with per-character baseline jitter) and scan artifacts (vignette, row banding, blur, noise) rather than plain geometric distortion — with a manifest of expected outcomes, for the upcoming accuracy test campaign.
+- IEEE 829-structured Test Plan, Test Case Specification (86 documented cases: 70 backend, 16 frontend), and a Test Summary Report skeleton (to be completed in Item 22) under `docs/`.
 
 ### Changed
 
