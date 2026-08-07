@@ -507,7 +507,7 @@ public final class AccuracyCampaignRunner {
         StringBuilder report = new StringBuilder();
         report.append("# Accuracy Campaign Results\n\n");
         report.append("Run ID: ").append(RUN_ID).append("\n\n");
-        report.append("OCR confidence threshold in effect: 60 (see `validation.ocr-confidence-threshold` in application.properties)\n\n");
+        report.append("See `validation.ocr-confidence-threshold` in application.properties for the threshold in effect during this run.\n\n");
         report.append("## Document-level status accuracy by quality\n\n");
         report.append("| Quality | Match | Mismatch | Needs Review | Total | Match % |\n");
         report.append("|---|---|---|---|---|---|\n");

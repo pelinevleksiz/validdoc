@@ -212,6 +212,7 @@
     "noResults": "Henüz segment sonucu yok.",
     "page": "Sayfa {{page}}",
     "value": "Değer: {{value}}",
+    "ocrConfidence": "OCR güveni: %{{value}}",
     "noImage": "Görüntü yok",
     "overrideButton": "Müdahale Et",
     "overrideConfirmTitle": "Emin misiniz?",

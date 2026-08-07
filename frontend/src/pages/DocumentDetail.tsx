@@ -357,6 +357,7 @@ function DocumentDetail() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("documents.page", { page: pageBySegmentId.get(r.segmentId) ?? "?" })}
                   {r.maskedValue && ` · ${t("documents.value", { value: r.maskedValue })}`}
+                  {typeof r.ocrConfidence === "number" && ` · ${t("documents.ocrConfidence", { value: r.ocrConfidence.toFixed(1) })}`}
                 </p>
                 {r.failedRules && r.failedRules.length > 0 && (
                   <p className="mt-1 text-xs text-destructive">
@@ -388,6 +389,11 @@ function DocumentDetail() {
                 {selectedSegment.maskedValue && (
                   <SheetDescription>
                     {t("documents.value", { value: selectedSegment.maskedValue })}
+                  </SheetDescription>
+                )}
+                {typeof selectedSegment.ocrConfidence === "number" && (
+                  <SheetDescription>
+                    {t("documents.ocrConfidence", { value: selectedSegment.ocrConfidence.toFixed(1) })}
                   </SheetDescription>
                 )}
               </SheetHeader>

@@ -72,14 +72,21 @@ public class OcrService {
             boolean inkSegment = isInkSegment(segment);
 
             if (inkSegment) {
-                double density = ImageProcessingUtil.computeInkDensity(region);
+                double density = ImageProcessingUtil.computePixelStdDev(region);
                 byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
                 readings.add(new SegmentReading(segment, null, density, null, croppedImage));
             } else {
-                OcrExtraction extraction = runOcr(tesseract, region, segment);
+                double inkDensity = ImageProcessingUtil.computePixelStdDev(region);
                 byte[] croppedImage = encodeForStorage(region, inkSegment, segment.getLabel());
-                Double pixelDensity = extraction.text().isEmpty() ? ImageProcessingUtil.computeInkDensity(region) : null;
-                readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImage));
+
+                log.warn(">>> TXTSTD2 label='{}' value={}", segment.getLabel(), inkDensity);
+                if (inkDensity < EMPTY_TEXT_SEGMENT_DENSITY_THRESHOLD) {
+                    readings.add(new SegmentReading(segment, "", inkDensity, null, croppedImage));
+                } else {
+                    OcrExtraction extraction = runOcr(tesseract, region, segment);
+                    Double pixelDensity = extraction.text().isEmpty() ? inkDensity : null;
+                    readings.add(new SegmentReading(segment, extraction.text(), pixelDensity, extraction.confidence(), croppedImage));
+                }
             }
         }
         return readings;
@@ -87,10 +94,26 @@ public class OcrService {
 
     private record OcrExtraction(String text, Double confidence) {}
 
+    private static final int MAX_PLAUSIBLE_WORD_COUNT = 10;
+    private static final double EMPTY_TEXT_SEGMENT_DENSITY_THRESHOLD = 5.0;
+
     private OcrExtraction runOcr(Tesseract tesseract, BufferedImage region, TemplateSegment segment) {
+        String whitelist = resolveNarrowWhitelist(segment);
+        boolean isSingleTokenField = whitelist != null;
         try {
+            if (whitelist != null) {
+                tesseract.setTessVariable("tessedit_char_whitelist", whitelist);
+            }
+            if (isSingleTokenField) {
+                tesseract.setPageSegMode(ITessAPI.TessPageSegMode.PSM_SINGLE_LINE);
+            }
             BufferedImage binarized = ImageProcessingUtil.binarizeForOcr(region);
             List<Word> words = tesseract.getWords(binarized, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+            if (words.size() > MAX_PLAUSIBLE_WORD_COUNT) {
+                log.warn("Segment '{}' icin OCR anormal derecede uzun cikti uretti ({} kelime), gurultu olarak degerlendirilip bos kabul ediliyor",
+                        segment.getLabel(), words.size());
+                return new OcrExtraction("", 0.0);
+            }
             String rawText = words.stream().map(Word::getText).collect(Collectors.joining(" ")).trim();
             String text = applyKnownOcrCorrections(rawText, segment);
             Double confidence = words.isEmpty() ? null : words.stream()
@@ -100,11 +123,32 @@ public class OcrService {
             return new OcrExtraction(text, confidence);
         } catch (Throwable t) {
             throw new OcrEngineException("Tesseract OCR calismasi basarisiz, segment=" + segment.getLabel(), t);
+        } finally {
+            if (whitelist != null) {
+                tesseract.setTessVariable("tessedit_char_whitelist", "");
+            }
+            if (isSingleTokenField) {
+                tesseract.setPageSegMode(ITessAPI.TessPageSegMode.PSM_SINGLE_BLOCK);
+            }
         }
+    }
+
+    private String resolveNarrowWhitelist(TemplateSegment segment) {
+        boolean isPhone = segment.getRules().stream().anyMatch(r -> r.getRuleType() == SegmentRuleType.PHONE);
+        boolean isEmail = segment.getRules().stream().anyMatch(r -> r.getRuleType() == SegmentRuleType.EMAIL);
+        if (isPhone) {
+            return PHONE_WHITELIST;
+        }
+        if (isEmail) {
+            return EMAIL_WHITELIST;
+        }
+        return null;
     }
 
     private static final Pattern PHONE_LEADING_T_MISREAD = Pattern.compile("^t(\\d[\\d\\s()\\-./]*)$");
     private static final Pattern EMAIL_MD_AS_AT_MISREAD = Pattern.compile("^([\\w.+-]+)MD([\\w-]+\\.[a-zA-Z]{2,})$");
+    private static final String PHONE_WHITELIST = "0123456789+";
+    private static final String EMAIL_WHITELIST = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@._-";
 
     private String applyKnownOcrCorrections(String text, TemplateSegment segment) {
         boolean isPhone = segment.getRules().stream().anyMatch(r -> r.getRuleType() == SegmentRuleType.PHONE);
@@ -116,10 +160,15 @@ public class OcrService {
                 return "+" + matcher.group(1);
             }
         }
-        if (isEmail && !text.contains("@")) {
-            Matcher matcher = EMAIL_MD_AS_AT_MISREAD.matcher(text);
-            if (matcher.matches()) {
-                return matcher.group(1) + "@" + matcher.group(2);
+        if (isEmail) {
+            if (text.contains("©")) {
+                text = text.replace("©", "@");
+            }
+            if (!text.contains("@")) {
+                Matcher matcher = EMAIL_MD_AS_AT_MISREAD.matcher(text);
+                if (matcher.matches()) {
+                    return matcher.group(1) + "@" + matcher.group(2);
+                }
             }
         }
         return text;
