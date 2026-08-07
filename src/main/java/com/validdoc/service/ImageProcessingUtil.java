@@ -4,6 +4,7 @@ import com.validdoc.exception.OpenCVException;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
 
 import java.awt.image.BufferedImage;
@@ -13,6 +14,8 @@ public final class ImageProcessingUtil {
 
     private ImageProcessingUtil() {
     }
+
+    private static final int OCR_BORDER_PX = 15;
 
     public static BufferedImage safeCrop(BufferedImage image, int x, int y, int w, int h) {
         int clampedX = Math.max(0, Math.min(x, image.getWidth() - 1));
@@ -43,31 +46,56 @@ public final class ImageProcessingUtil {
         }
     }
 
-    private static final int OCR_BORDER_PX = 15;
-
-    public static BufferedImage binarizeForOcr(BufferedImage region) {
+    private static Mat toDenoisedGray(BufferedImage region) {
         Mat mat = bufferedImageToMat(region);
         Mat gray = new Mat();
+        Mat denoised = new Mat();
+        try {
+            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_BGR2GRAY);
+            Imgproc.medianBlur(gray, denoised, 3);
+            return denoised;
+        } finally {
+            mat.release();
+            gray.release();
+        }
+    }
+
+    public static double computePixelStdDev(BufferedImage region) {
+        Mat denoisedGray = toDenoisedGray(region);
+        try {
+            org.opencv.core.MatOfDouble mean = new org.opencv.core.MatOfDouble();
+            org.opencv.core.MatOfDouble stddev = new org.opencv.core.MatOfDouble();
+            Core.meanStdDev(denoisedGray, mean, stddev);
+            double result = stddev.toArray()[0];
+            mean.release();
+            stddev.release();
+            return result;
+        } finally {
+            denoisedGray.release();
+        }
+    }
+
+    public static BufferedImage binarizeForOcr(BufferedImage region) {
+        Mat denoisedGray = toDenoisedGray(region);
         Mat binary = new Mat();
         Mat bordered = new Mat();
         try {
-            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_BGR2GRAY);
-            Imgproc.threshold(gray, binary, 0, 255, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU);
-            org.opencv.core.Core.copyMakeBorder(binary, bordered,
+            Imgproc.threshold(denoisedGray, binary, 0, 255, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU);
+            Core.copyMakeBorder(binary, bordered,
                     OCR_BORDER_PX, OCR_BORDER_PX, OCR_BORDER_PX, OCR_BORDER_PX,
-                    org.opencv.core.Core.BORDER_CONSTANT, new org.opencv.core.Scalar(255));
+                    Core.BORDER_CONSTANT, new Scalar(255));
             BufferedImage result = new BufferedImage(bordered.cols(), bordered.rows(), BufferedImage.TYPE_BYTE_GRAY);
             byte[] data = new byte[bordered.cols() * bordered.rows()];
             bordered.get(0, 0, data);
             result.getRaster().setDataElements(0, 0, bordered.cols(), bordered.rows(), data);
             return result;
         } finally {
-            mat.release();
-            gray.release();
+            denoisedGray.release();
             binary.release();
             bordered.release();
         }
     }
+
     public static Mat bufferedImageToMat(BufferedImage bi) {
         BufferedImage normalized = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
         normalized.getGraphics().drawImage(bi, 0, 0, null);
